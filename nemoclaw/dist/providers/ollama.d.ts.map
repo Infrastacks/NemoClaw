@@ -1,0 +1,1 @@
+{"version":3,"file":"ollama.d.ts","sourceRoot":"","sources":["../../src/providers/ollama.ts"],"names":[],"mappings":"AAIA,OAAO,KAAK,EAAE,iBAAiB,EAAE,MAAM,gBAAgB,CAAC;AAexD,wBAAgB,YAAY,IAAI;IAAE,SAAS,EAAE,OAAO,CAAC;IAAC,OAAO,EAAE,OAAO,CAAA;CAAE,CAIvE;AAED,wBAAgB,eAAe,CAAC,MAAM,EAAE,MAAM,GAAG,MAAM,EAAE,CAQxD;AAgBD,eAAO,MAAM,cAAc,EAAE,iBAkD5B,CAAC"}

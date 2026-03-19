@@ -7,57 +7,7 @@ exports.default = register;
 const cli_js_1 = require("./cli.js");
 const slash_js_1 = require("./commands/slash.js");
 const config_js_1 = require("./onboard/config.js");
-function activeModelEntries(onboardCfg) {
-    if (!onboardCfg?.model) {
-        return [
-            {
-                id: "nvidia/nemotron-3-super-120b-a12b",
-                label: "Nemotron 3 Super 120B (March 2026)",
-                contextWindow: 131072,
-                maxOutput: 8192,
-            },
-            {
-                id: "nvidia/llama-3.1-nemotron-ultra-253b-v1",
-                label: "Nemotron Ultra 253B",
-                contextWindow: 131072,
-                maxOutput: 4096,
-            },
-            {
-                id: "nvidia/llama-3.3-nemotron-super-49b-v1.5",
-                label: "Nemotron Super 49B v1.5",
-                contextWindow: 131072,
-                maxOutput: 4096,
-            },
-            {
-                id: "nvidia/nemotron-3-nano-30b-a3b",
-                label: "Nemotron 3 Nano 30B",
-                contextWindow: 131072,
-                maxOutput: 4096,
-            },
-        ];
-    }
-    return [
-        {
-            id: `inference/${onboardCfg.model}`,
-            label: onboardCfg.model,
-            contextWindow: 131072,
-            maxOutput: 8192,
-        },
-    ];
-}
-function registeredProviderForConfig(onboardCfg, providerCredentialEnv) {
-    const authLabel = providerCredentialEnv === "NVIDIA_API_KEY"
-        ? `NVIDIA API Key (${providerCredentialEnv})`
-        : `OpenAI API Key (${providerCredentialEnv})`;
-    return {
-        id: "inference",
-        label: "Managed Inference Route",
-        aliases: ["inference-local", "nemoclaw"],
-        envVars: [providerCredentialEnv],
-        models: { chat: activeModelEntries(onboardCfg) },
-        auth: [{ type: "bearer", envVar: providerCredentialEnv, headerName: "Authorization", label: authLabel }],
-    };
-}
+const index_js_1 = require("./providers/index.js");
 const DEFAULT_PLUGIN_CONFIG = {
     blueprintVersion: "latest",
     blueprintRegistry: "ghcr.io/nvidia/nemoclaw-blueprint",
@@ -96,10 +46,12 @@ function register(api) {
     api.registerCli((cliCtx) => {
         (0, cli_js_1.registerCliCommands)(cliCtx, api);
     }, { commands: ["nemoclaw"] });
-    // 3. Register nvidia-nim provider — use onboard config if available
+    // 3. Register inference provider — use onboard config if available
+    const registry = (0, index_js_1.createDefaultRegistry)();
     const onboardCfg = (0, config_js_1.loadOnboardConfig)();
-    const providerCredentialEnv = onboardCfg?.credentialEnv ?? "NVIDIA_API_KEY";
-    api.registerProvider(registeredProviderForConfig(onboardCfg, providerCredentialEnv));
+    const provider = registry.resolve(onboardCfg?.endpointType ?? "build");
+    const credentialEnv = onboardCfg?.credentialEnv ?? provider.credentialEnvVar;
+    api.registerProvider(provider.toProviderPlugin(onboardCfg?.model ?? null, credentialEnv));
     const bannerEndpoint = onboardCfg ? (0, config_js_1.describeOnboardEndpoint)(onboardCfg) : "build.nvidia.com";
     const bannerProvider = onboardCfg ? (0, config_js_1.describeOnboardProvider)(onboardCfg) : "NVIDIA Cloud API";
     const bannerModel = onboardCfg?.model ?? "nvidia/nemotron-3-super-120b-a12b";
