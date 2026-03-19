@@ -1,0 +1,14 @@
+# Default owners for everything
+* @NVIDIA/nemoclaw-maintainers
+
+# TypeScript plugin
+/nemoclaw/ @NVIDIA/nemoclaw-maintainers
+
+# Python blueprint
+/nemoclaw-blueprint/ @NVIDIA/nemoclaw-maintainers
+
+# CI/CD and repo config
+/.github/ @NVIDIA/nemoclaw-maintainers
+
+# Documentation
+/docs/ @NVIDIA/nemoclaw-maintainers

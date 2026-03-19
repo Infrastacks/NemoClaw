@@ -1,0 +1,71 @@
+name: Bug Report
+description: Report a bug to help us improve NemoClaw
+labels: ["status: triage", "bug"]
+body:
+  - type: dropdown
+    id: version
+    attributes:
+      label: NemoClaw Version
+      description: Which version are you running?
+      options:
+        - "0.1.0"
+        - "main (unreleased)"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: install-method
+    attributes:
+      label: Installation Method
+      options:
+        - "npm install nemoclaw"
+        - "curl installer"
+        - "Built from source"
+    validations:
+      required: true
+
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to Reproduce
+      placeholder: |
+        1. Run `nemoclaw onboard --profile ...`
+        2. See error...
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected Behavior
+      placeholder: What should have happened?
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual Behavior
+      placeholder: What happened instead?
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Error Logs / Traceback
+      render: shell
+    validations:
+      required: false
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      placeholder: |
+        - OS: Ubuntu 24.04 / macOS 15 / Windows 11 WSL2
+        - Node.js: 22.x
+        - Python: 3.11
+        - Docker: 27.x
+    validations:
+      required: false

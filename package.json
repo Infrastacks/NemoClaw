@@ -8,7 +8,18 @@
   },
   "scripts": {
     "test": "node --test test/*.test.js",
+    "prepare": "husky",
     "prepublishOnly": "cd nemoclaw && npm install --ignore-scripts && npm run build"
+  },
+  "lint-staged": {
+    "nemoclaw/src/**/*.ts": ["eslint --fix", "prettier --write"],
+    "nemoclaw-blueprint/**/*.py": ["ruff check --fix", "ruff format"]
+  },
+  "devDependencies": {
+    "husky": "^9.0.0",
+    "lint-staged": "^15.0.0",
+    "@commitlint/cli": "^19.0.0",
+    "@commitlint/config-conventional": "^19.0.0"
   },
   "dependencies": {
     "openclaw": "2026.3.11"

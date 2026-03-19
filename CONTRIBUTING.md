@@ -131,3 +131,32 @@ fix(blueprint): handle missing API key gracefully
 docs: update quickstart for new install wizard
 chore(deps): bump commander to 13.2
 ```
+
+## Developer Certificate of Origin (DCO)
+
+All commits must include a `Signed-off-by` trailer certifying the [Developer Certificate of Origin](https://developercertificate.org/):
+
+```bash
+git commit -s -m "feat(cli): add --profile flag"
+```
+
+If you forgot to sign off, amend your commits:
+
+```bash
+git rebase HEAD~N --signoff
+git push --force-with-lease
+```
+
+The DCO check runs on every PR and will block merge until all commits are signed.
+
+## AI-Assisted Contributions
+
+AI tools (Claude Code, Copilot, Cursor, etc.) are welcome but do not lower the quality bar. Requirements for AI-assisted PRs:
+
+1. **Understand every change.** You must be able to explain what each line does and why it's needed.
+2. **Commit messages explain intent.** "Add retry logic to handle transient NIM API failures" — not "refactor error handling as suggested by AI."
+3. **No speculative improvements.** Every change must map to a stated goal. If the AI suggested cleaning up adjacent code, leave it out.
+4. **Tests verify real behavior.** Import checks, trivial assertions, and coverage padding will be rejected.
+5. **Keep PRs focused.** Don't bundle unrelated AI suggestions into one PR.
+
+Maintainers may close PRs that show signs of unreviewed AI output: boilerplate comments, unnecessary abstractions, or changes without clear motivation.
