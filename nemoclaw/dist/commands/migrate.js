@@ -10,6 +10,7 @@ const resolve_js_1 = require("../blueprint/resolve.js");
 const verify_js_1 = require("../blueprint/verify.js");
 const exec_js_1 = require("../blueprint/exec.js");
 const state_js_1 = require("../blueprint/state.js");
+const config_js_1 = require("../onboard/config.js");
 const migration_state_js_1 = require("./migration-state.js");
 var migration_state_js_2 = require("./migration-state.js");
 Object.defineProperty(exports, "detectHostOpenClaw", { enumerable: true, get: function () { return migration_state_js_2.detectHostOpenClaw; } });
@@ -78,12 +79,15 @@ async function cliMigrate(opts) {
         logger.error(`Blueprint verification failed: ${verification.errors.join(", ")}`);
         return;
     }
+    const onboardConfig = (0, config_js_1.loadOnboardConfig)();
+    const endpointUrl = onboardConfig?.endpointUrl || undefined;
     logger.info("Planning migration...");
     const planResult = await (0, exec_js_1.execBlueprint)({
         blueprintPath: blueprint.localPath,
         action: "plan",
         profile,
         jsonOutput: true,
+        endpointUrl,
     }, logger);
     if (!planResult.success) {
         logger.error(`Migration plan failed: ${planResult.output}`);
@@ -96,6 +100,7 @@ async function cliMigrate(opts) {
         profile,
         planPath: planResult.runId,
         jsonOutput: true,
+        endpointUrl,
     }, logger);
     if (!applyResult.success) {
         logger.error(`Migration apply failed: ${applyResult.output}`);

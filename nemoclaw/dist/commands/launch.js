@@ -8,6 +8,7 @@ const resolve_js_1 = require("../blueprint/resolve.js");
 const verify_js_1 = require("../blueprint/verify.js");
 const exec_js_1 = require("../blueprint/exec.js");
 const state_js_1 = require("../blueprint/state.js");
+const config_js_1 = require("../onboard/config.js");
 const migrate_js_1 = require("./migrate.js");
 async function cliLaunch(opts) {
     const { force, profile, logger, pluginConfig } = opts;
@@ -50,6 +51,8 @@ async function cliLaunch(opts) {
         logger.error(`Compatibility check failed:\n  ${compat.join("\n  ")}`);
         return;
     }
+    const onboardConfig = (0, config_js_1.loadOnboardConfig)();
+    const endpointUrl = onboardConfig?.endpointUrl || undefined;
     // Plan
     logger.info("Planning deployment...");
     const planResult = await (0, exec_js_1.execBlueprint)({
@@ -57,6 +60,7 @@ async function cliLaunch(opts) {
         action: "plan",
         profile,
         jsonOutput: true,
+        endpointUrl,
     }, logger);
     if (!planResult.success) {
         logger.error(`Blueprint plan failed: ${planResult.output}`);
@@ -70,6 +74,7 @@ async function cliLaunch(opts) {
         profile,
         planPath: planResult.runId,
         jsonOutput: true,
+        endpointUrl,
     }, logger);
     if (!applyResult.success) {
         logger.error(`Blueprint apply failed: ${applyResult.output}`);

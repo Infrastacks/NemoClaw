@@ -79,6 +79,40 @@ def test_action_plan_endpoint_override(monkeypatch, capsys):
 # --- action_plan with unknown profile ---
 
 
+NCP_BLUEPRINT = {
+    "components": {
+        "inference": {
+            "profiles": {
+                "ncp": {
+                    "provider_type": "ncp",
+                    "provider_name": "ncp-partner",
+                    "endpoint": "",
+                    "dynamic_endpoint": True,
+                    "model": "meta/llama-3.1-70b",
+                    "credential_env": "NCP_API_KEY",
+                },
+            },
+        },
+        "sandbox": {
+            "image": "openclaw:latest",
+            "name": "ncp-sandbox",
+            "forward_ports": [18789],
+        },
+    },
+}
+
+
+def test_action_plan_with_ncp_profile(monkeypatch, capsys):
+    """NCP profile with dynamic_endpoint must use the endpoint URL override."""
+    monkeypatch.setattr("orchestrator.runner.openshell_available", lambda: True)
+
+    plan = action_plan("ncp", NCP_BLUEPRINT, endpoint_url="https://ncp.example.com/v1")
+
+    assert plan["inference"]["endpoint"] == "https://ncp.example.com/v1"
+    assert plan["inference"]["provider_type"] == "ncp"
+    assert plan["inference"]["model"] == "meta/llama-3.1-70b"
+
+
 def test_action_plan_unknown_profile_exits(capsys):
     """Unknown profile must exit non-zero and list available profiles — this is the error
     path users actually hit when they typo a profile name."""

@@ -7,6 +7,7 @@ import { resolveBlueprint } from "../blueprint/resolve.js";
 import { verifyBlueprintDigest, checkCompatibility } from "../blueprint/verify.js";
 import { execBlueprint } from "../blueprint/exec.js";
 import { loadState, saveState } from "../blueprint/state.js";
+import { loadOnboardConfig } from "../onboard/config.js";
 import { detectHostOpenClaw } from "./migrate.js";
 
 export interface LaunchOptions {
@@ -71,6 +72,9 @@ export async function cliLaunch(opts: LaunchOptions): Promise<void> {
     return;
   }
 
+  const onboardConfig = loadOnboardConfig();
+  const endpointUrl = onboardConfig?.endpointUrl || undefined;
+
   // Plan
   logger.info("Planning deployment...");
   const planResult = await execBlueprint(
@@ -79,6 +83,7 @@ export async function cliLaunch(opts: LaunchOptions): Promise<void> {
       action: "plan",
       profile,
       jsonOutput: true,
+      endpointUrl,
     },
     logger,
   );
@@ -97,6 +102,7 @@ export async function cliLaunch(opts: LaunchOptions): Promise<void> {
       profile,
       planPath: planResult.runId,
       jsonOutput: true,
+      endpointUrl,
     },
     logger,
   );

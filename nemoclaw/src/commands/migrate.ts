@@ -8,6 +8,7 @@ import { resolveBlueprint } from "../blueprint/resolve.js";
 import { verifyBlueprintDigest } from "../blueprint/verify.js";
 import { execBlueprint } from "../blueprint/exec.js";
 import { loadState, saveState } from "../blueprint/state.js";
+import { loadOnboardConfig } from "../onboard/config.js";
 import {
   cleanupSnapshotBundle,
   createArchiveFromDirectory,
@@ -95,6 +96,9 @@ export async function cliMigrate(opts: MigrateOptions): Promise<void> {
     return;
   }
 
+  const onboardConfig = loadOnboardConfig();
+  const endpointUrl = onboardConfig?.endpointUrl || undefined;
+
   logger.info("Planning migration...");
   const planResult = await execBlueprint(
     {
@@ -102,6 +106,7 @@ export async function cliMigrate(opts: MigrateOptions): Promise<void> {
       action: "plan",
       profile,
       jsonOutput: true,
+      endpointUrl,
     },
     logger,
   );
@@ -119,6 +124,7 @@ export async function cliMigrate(opts: MigrateOptions): Promise<void> {
       profile,
       planPath: planResult.runId,
       jsonOutput: true,
+      endpointUrl,
     },
     logger,
   );
