@@ -12,7 +12,7 @@ import {
   type NemoClawOnboardConfig,
 } from "../onboard/config.js";
 import { promptInput, promptConfirm, promptSelect } from "../onboard/prompt.js";
-import { validateApiKey, azureValidateOptions, maskApiKey } from "../onboard/validate.js";
+import { maskApiKey } from "../onboard/validate.js";
 import {
   createDefaultRegistry,
   detectOllama,
@@ -61,6 +61,20 @@ function execOpenShell(args: string[]): string {
     encoding: "utf-8",
     stdio: ["pipe", "pipe", "pipe"],
   });
+}
+
+function appendProviderArgs(
+  args: string[],
+  config: ReturnType<InferenceProvider["toOpenShellProviderConfig"]>,
+): string[] {
+  const nextArgs = [...args];
+  for (const [name, value] of Object.entries(config.credentials ?? {})) {
+    nextArgs.push("--credential", `${name}=${value}`);
+  }
+  for (const [name, value] of Object.entries(config.config ?? {})) {
+    nextArgs.push("--config", `${name}=${value}`);
+  }
+  return nextArgs;
 }
 
 export async function cliOnboard(opts: OnboardOptions): Promise<void> {
@@ -180,17 +194,19 @@ export async function cliOnboard(opts: OnboardOptions): Promise<void> {
   // For local providers, validation is best-effort since the service may not be running yet.
   logger.info("");
   logger.info(`Validating ${provider.requiresApiKey ? "credential" : "endpoint"} against ${endpointUrl}...`);
-  const validateOpts = provider.providerType === "azure_openai"
-    ? azureValidateOptions(apiKey, endpointUrl) : undefined;
-  const validation = await validateApiKey(apiKey, endpointUrl, validateOpts);
+  const validationValid = await provider.validateCredentials(apiKey, endpointUrl);
+  const validationModels =
+    validationValid || provider.id === "ollama"
+      ? await provider.discoverModels(apiKey, endpointUrl)
+      : [];
 
-  if (!validation.valid) {
+  if (!validationValid) {
     if (provider.isLocal) {
       logger.warn(
-        `Could not reach ${endpointUrl} (${validation.error ?? "unknown error"}). Continuing anyway — the service may not be running yet.`,
+        `Could not validate ${endpointUrl}. Continuing anyway — the service may not be running yet.`,
       );
     } else {
-      logger.error(`API key validation failed: ${validation.error ?? "unknown error"}`);
+      logger.error("API key validation failed.");
       if (credentialEnv === "AZURE_OPENAI_API_KEY") {
         logger.info("Check your key and endpoint in the Azure Portal under your OpenAI resource → Keys and Endpoint");
       } else {
@@ -200,7 +216,7 @@ export async function cliOnboard(opts: OnboardOptions): Promise<void> {
     }
   } else {
     logger.info(
-      `${provider.requiresApiKey ? "Credential" : "Endpoint"} valid. ${String(validation.models.length)} model(s) available.`,
+      `${provider.requiresApiKey ? "Credential" : "Endpoint"} valid. ${String(validationModels.length)} model(s) available.`,
     );
   }
 
@@ -209,11 +225,7 @@ export async function cliOnboard(opts: OnboardOptions): Promise<void> {
   if (opts.model) {
     model = opts.model;
   } else {
-    // Ollama discovers models via `ollama list`; others use validation response
-    const discoveredModels =
-      provider.id === "ollama"
-        ? await provider.discoverModels(apiKey, endpointUrl)
-        : validation.models;
+    const discoveredModels = validationModels;
 
     let modelOptions = provider.buildModelOptions(discoveredModels);
     if (modelOptions.length === 0) {
@@ -281,34 +293,27 @@ export async function cliOnboard(opts: OnboardOptions): Promise<void> {
   logger.info("Applying configuration...");
 
   // 8a: Create/update provider
+  const providerConfig = provider.toOpenShellProviderConfig(apiKey, endpointUrl);
   try {
-    execOpenShell([
+    execOpenShell(appendProviderArgs([
       "provider",
       "create",
       "--name",
       providerName,
       "--type",
-      "openai",
-      "--credential",
-      `${credentialEnv}=${apiKey}`,
-      "--config",
-      `OPENAI_BASE_URL=${endpointUrl}`,
-    ]);
+      providerConfig.type,
+    ], providerConfig));
     logger.info(`Created provider: ${providerName}`);
   } catch (err) {
     const stderr =
       err instanceof Error && "stderr" in err ? String((err as { stderr: unknown }).stderr) : "";
     if (stderr.includes("AlreadyExists") || stderr.includes("already exists")) {
       try {
-        execOpenShell([
+        execOpenShell(appendProviderArgs([
           "provider",
           "update",
           providerName,
-          "--credential",
-          `${credentialEnv}=${apiKey}`,
-          "--config",
-          `OPENAI_BASE_URL=${endpointUrl}`,
-        ]);
+        ], providerConfig));
         logger.info(`Updated provider: ${providerName}`);
       } catch (updateErr) {
         const updateStderr =

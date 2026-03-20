@@ -34,6 +34,12 @@ export interface InferenceProfileConfig {
   dynamic_endpoint?: boolean;
 }
 
+export interface OpenShellProviderConfig {
+  type: string;
+  credentials?: Record<string, string>;
+  config?: Record<string, string>;
+}
+
 export interface InferenceProvider {
   readonly id: string;
   readonly label: string;
@@ -60,6 +66,7 @@ export interface InferenceProvider {
   validateCredentials(apiKey: string, endpointUrl: string): Promise<boolean>;
   toProviderPlugin(model: string | null, credentialEnv: string): ProviderPlugin;
   toBlueprintProfile(model: string, credentialEnv: string): InferenceProfileConfig;
+  toOpenShellProviderConfig(apiKey: string, endpointUrl: string): OpenShellProviderConfig;
   describeProvider(): string;
   estimateCost?(model: string, tokens: number): number;
 }
@@ -86,5 +93,18 @@ export function createProviderPlugin(
     envVars: [credentialEnv],
     models: { chat: chatModels },
     auth: [{ type: "bearer", envVar: credentialEnv, headerName: "Authorization", label: authLabel }],
+  };
+}
+
+export function createOpenShellProviderConfig(
+  type: string,
+  credentialKey: string,
+  credentialValue: string,
+  endpointUrl: string,
+): OpenShellProviderConfig {
+  return {
+    type,
+    credentials: { [credentialKey]: credentialValue },
+    config: { OPENAI_BASE_URL: endpointUrl },
   };
 }

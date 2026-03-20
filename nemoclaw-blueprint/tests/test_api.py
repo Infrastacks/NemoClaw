@@ -225,3 +225,24 @@ def test_get_current_blueprint(client, monkeypatch):
     assert data["sandbox"]["image"] == "openclaw:latest"
     assert data["min_openshell"] == "0.1.0"
     assert data["min_openclaw"] == "2026.3.0"
+
+
+def test_get_blueprint_by_version(client, monkeypatch):
+    """GET /v1/blueprints/{version} returns current metadata for the active version."""
+    monkeypatch.setattr("orchestrator.core.get_blueprint", lambda version, path=None: DESCRIBE_META)
+
+    resp = client.get("/v1/blueprints/0.1.0")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["version"] == "0.1.0"
+    assert data["sandbox"]["name"] == "openclaw"
+
+
+def test_get_blueprint_current_alias_route(client, monkeypatch):
+    """GET /v1/blueprints/current remains supported as a compatibility alias."""
+    monkeypatch.setattr("orchestrator.core.get_blueprint", lambda version, path=None: DESCRIBE_META)
+
+    resp = client.get("/v1/blueprints/current")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["version"] == "0.1.0"

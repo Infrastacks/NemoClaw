@@ -98,7 +98,14 @@ export class BlueprintApiClient {
     return this.request<BlueprintSummary[]>("GET", "/v1/blueprints");
   }
 
+  async getBlueprint(version: string): Promise<BlueprintDescribeResponse> {
+    return this.request<BlueprintDescribeResponse>(
+      "GET",
+      `/v1/blueprints/${encodeURIComponent(version)}`,
+    );
+  }
+
   async describeBlueprint(): Promise<BlueprintDescribeResponse> {
-    return this.request<BlueprintDescribeResponse>("GET", "/v1/blueprints/current");
+    return this.getBlueprint("current");
   }
 }

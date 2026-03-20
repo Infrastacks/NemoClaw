@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import type { InferenceProvider, InferenceProfileConfig } from "./interface.js";
-import { createProviderPlugin } from "./interface.js";
+import { createOpenShellProviderConfig, createProviderPlugin } from "./interface.js";
 import { validateApiKey } from "../onboard/validate.js";
 import { promptInput } from "../onboard/prompt.js";
 
@@ -65,6 +65,10 @@ export const nimLocalProvider: InferenceProvider = {
       model,
       credential_env: credentialEnv,
     };
+  },
+
+  toOpenShellProviderConfig(apiKey, endpointUrl) {
+    return createOpenShellProviderConfig("openai", this.credentialEnvVar, apiKey, endpointUrl);
   },
 
   describeProvider() {

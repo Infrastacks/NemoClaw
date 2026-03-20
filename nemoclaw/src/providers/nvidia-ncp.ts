@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import type { InferenceProvider, InferenceProfileConfig } from "./interface.js";
-import { createProviderPlugin } from "./interface.js";
+import { createOpenShellProviderConfig, createProviderPlugin } from "./interface.js";
 import { validateApiKey } from "../onboard/validate.js";
 import { promptInput } from "../onboard/prompt.js";
 import { CURATED_MODELS } from "./nvidia-build.js";
@@ -79,6 +79,10 @@ export const nvidiaNcpProvider: InferenceProvider = {
       credential_env: credentialEnv,
       dynamic_endpoint: true,
     };
+  },
+
+  toOpenShellProviderConfig(apiKey, endpointUrl) {
+    return createOpenShellProviderConfig("openai", this.credentialEnvVar, apiKey, endpointUrl);
   },
 
   describeProvider() {

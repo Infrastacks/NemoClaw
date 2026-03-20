@@ -441,3 +441,33 @@ describe("toBlueprintProfile", () => {
     }
   });
 });
+
+// ---------------------------------------------------------------------------
+// toOpenShellProviderConfig
+// ---------------------------------------------------------------------------
+
+describe("toOpenShellProviderConfig", () => {
+  it("nvidia-build returns openai provider config with NVIDIA credential", () => {
+    const config = nvidiaBuildProvider.toOpenShellProviderConfig(
+      "nvapi-test",
+      "https://integrate.api.nvidia.com/v1",
+    );
+    expect(config.type).toBe("openai");
+    expect(config.credentials).toEqual({ NVIDIA_API_KEY: "nvapi-test" });
+    expect(config.config).toEqual({
+      OPENAI_BASE_URL: "https://integrate.api.nvidia.com/v1",
+    });
+  });
+
+  it("azure returns provider config with Azure credential name", () => {
+    const config = azureOpenAIProvider.toOpenShellProviderConfig(
+      "azure-key",
+      "https://my-resource.openai.azure.com",
+    );
+    expect(config.type).toBe("openai");
+    expect(config.credentials).toEqual({ AZURE_OPENAI_API_KEY: "azure-key" });
+    expect(config.config).toEqual({
+      OPENAI_BASE_URL: "https://my-resource.openai.azure.com",
+    });
+  });
+});

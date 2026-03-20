@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import type { InferenceProvider, InferenceProfileConfig, ProviderPlugin } from "./interface.js";
+import { createOpenShellProviderConfig } from "./interface.js";
 import { validateApiKey, azureValidateOptions } from "../onboard/validate.js";
 import { promptInput } from "../onboard/prompt.js";
 
@@ -97,6 +98,10 @@ export const azureOpenAIProvider: InferenceProvider = {
       credential_env: credentialEnv,
       dynamic_endpoint: true,
     };
+  },
+
+  toOpenShellProviderConfig(apiKey, endpointUrl) {
+    return createOpenShellProviderConfig("openai", this.credentialEnvVar, apiKey, endpointUrl);
   },
 
   describeProvider() {

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import type { InferenceProvider, InferenceProfileConfig } from "./interface.js";
-import { createProviderPlugin } from "./interface.js";
+import { createOpenShellProviderConfig, createProviderPlugin } from "./interface.js";
 import { validateApiKey } from "../onboard/validate.js";
 
 const HOST_GATEWAY = "http://host.openshell.internal";
@@ -67,6 +67,10 @@ export const vllmProvider: InferenceProvider = {
       credential_env: credentialEnv,
       credential_default: "dummy",
     };
+  },
+
+  toOpenShellProviderConfig(apiKey, endpointUrl) {
+    return createOpenShellProviderConfig("openai", this.credentialEnvVar, apiKey, endpointUrl);
   },
 
   describeProvider() {

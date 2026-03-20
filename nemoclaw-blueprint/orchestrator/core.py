@@ -127,6 +127,15 @@ def describe_blueprint(path: str | None = None) -> dict[str, Any]:
     }
 
 
+def get_blueprint(version: str, path: str | None = None) -> dict[str, Any]:
+    """Return the current blueprint metadata for the supported version selectors."""
+    meta = describe_blueprint(path)
+    if version in {"current", meta["version"]}:
+        return meta
+
+    raise RunnerError(BLUEPRINT_NOT_FOUND, f"Blueprint version '{version}' not found.")
+
+
 # ---------------------------------------------------------------------------
 # Actions
 # ---------------------------------------------------------------------------
@@ -219,10 +228,12 @@ def apply(
     if plan_path:
         saved = load_plan(plan_path)
         rid = saved["run_id"]
+        resolved_profile = saved.get("profile", profile)
         sandbox_cfg = saved.get("sandbox", {})
         inference_cfg = saved.get("inference", {})
     else:
         rid = generate_run_id()
+        resolved_profile = profile
         inference_profiles: dict[str, Any] = (
             blueprint.get("components", {}).get("inference", {}).get("profiles", {})
         )
@@ -293,17 +304,47 @@ def apply(
     if endpoint:
         provider_args.extend(["--config", f"OPENAI_BASE_URL={endpoint}"])
 
-    run_cmd(provider_args, check=False, capture=True)
+    provider_result = run_cmd(provider_args, check=False, capture=True)
+    if provider_result.returncode != 0:
+        stderr = provider_result.stderr or ""
+        if "already exists" in stderr.lower():
+            update_args = [
+                "openshell",
+                "provider",
+                "update",
+                provider_name,
+            ]
+            if credential:
+                update_args.extend(["--credential", f"OPENAI_API_KEY={credential}"])
+            if endpoint:
+                update_args.extend(["--config", f"OPENAI_BASE_URL={endpoint}"])
+
+            update_result = run_cmd(update_args, check=False, capture=True)
+            if update_result.returncode != 0:
+                raise RunnerError(
+                    SUBPROCESS_FAILED,
+                    f"Failed to update provider: {update_result.stderr}",
+                )
+        else:
+            raise RunnerError(
+                SUBPROCESS_FAILED,
+                f"Failed to create provider: {provider_result.stderr}",
+            )
 
     # Step 3: Set inference route
     if on_progress:
         on_progress(70, "Setting inference route")
 
-    run_cmd(
+    inference_result = run_cmd(
         ["openshell", "inference", "set", "--provider", provider_name, "--model", model],
         check=False,
         capture=True,
     )
+    if inference_result.returncode != 0:
+        raise RunnerError(
+            SUBPROCESS_FAILED,
+            f"Failed to set inference route: {inference_result.stderr}",
+        )
 
     # Step 4: Save run state
     if on_progress:
@@ -315,7 +356,7 @@ def apply(
         json.dumps(
             {
                 "run_id": rid,
-                "profile": profile,
+                "profile": resolved_profile,
                 "sandbox_name": sandbox_name,
                 "inference": inference_cfg,
                 "timestamp": datetime.now(UTC).isoformat(),

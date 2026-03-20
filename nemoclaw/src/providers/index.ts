@@ -8,8 +8,9 @@ export type {
   ModelOption,
   WizardContext,
   EndpointResolutionContext,
+  OpenShellProviderConfig,
 } from "./interface.js";
-export { createProviderPlugin } from "./interface.js";
+export { createOpenShellProviderConfig, createProviderPlugin } from "./interface.js";
 export { ProviderRegistry } from "./registry.js";
 export { nvidiaBuildProvider, CURATED_MODELS } from "./nvidia-build.js";
 export { nvidiaNcpProvider } from "./nvidia-ncp.js";

@@ -101,7 +101,16 @@ def list_blueprints() -> list[BlueprintSummary]:
 @app.get("/v1/blueprints/current", response_model=BlueprintDescribeResponse)
 def get_current_blueprint() -> BlueprintDescribeResponse:
     try:
-        meta = core.describe_blueprint()
+        meta = core.get_blueprint("current")
+        return BlueprintDescribeResponse(**meta)
+    except core.RunnerError as exc:
+        raise _handle_runner_error(exc) from exc
+
+
+@app.get("/v1/blueprints/{version}", response_model=BlueprintDescribeResponse)
+def get_blueprint(version: str) -> BlueprintDescribeResponse:
+    try:
+        meta = core.get_blueprint(version)
         return BlueprintDescribeResponse(**meta)
     except core.RunnerError as exc:
         raise _handle_runner_error(exc) from exc

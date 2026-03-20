@@ -12,9 +12,11 @@ from orchestrator.core import (
     PLAN_NOT_FOUND,
     PROFILE_NOT_FOUND,
     RUN_NOT_FOUND,
+    SUBPROCESS_FAILED,
     RunnerError,
     describe_blueprint,
     generate_run_id,
+    get_blueprint,
     list_runs,
     load_plan,
     plan,
@@ -138,6 +140,47 @@ def test_apply_returns_result(monkeypatch, tmp_path):
     assert "ready" in result["message"]
 
 
+def test_apply_raises_when_provider_create_fails(monkeypatch, tmp_path):
+    """Apply fails closed when provider creation fails."""
+    responses = iter(
+        [
+            type("R", (), {"returncode": 0, "stderr": ""})(),
+            type("R", (), {"returncode": 1, "stderr": "provider create failed"})(),
+        ]
+    )
+    monkeypatch.setattr("orchestrator.core.Path.home", lambda: tmp_path)
+    monkeypatch.setattr("orchestrator.core.run_cmd", lambda *a, **kw: next(responses))
+
+    from orchestrator.core import apply
+
+    with pytest.raises(RunnerError) as exc_info:
+        apply("local", VALID_BLUEPRINT)
+
+    assert exc_info.value.code == SUBPROCESS_FAILED
+    assert "create provider" in exc_info.value.message.lower()
+
+
+def test_apply_raises_when_inference_set_fails(monkeypatch, tmp_path):
+    """Apply fails closed when setting the inference route fails."""
+    responses = iter(
+        [
+            type("R", (), {"returncode": 0, "stderr": ""})(),
+            type("R", (), {"returncode": 0, "stderr": ""})(),
+            type("R", (), {"returncode": 1, "stderr": "inference set failed"})(),
+        ]
+    )
+    monkeypatch.setattr("orchestrator.core.Path.home", lambda: tmp_path)
+    monkeypatch.setattr("orchestrator.core.run_cmd", lambda *a, **kw: next(responses))
+
+    from orchestrator.core import apply
+
+    with pytest.raises(RunnerError) as exc_info:
+        apply("local", VALID_BLUEPRINT)
+
+    assert exc_info.value.code == SUBPROCESS_FAILED
+    assert "inference route" in exc_info.value.message.lower()
+
+
 # --- status ---
 
 
@@ -231,6 +274,27 @@ def test_apply_with_plan_path_uses_plan_config(monkeypatch, tmp_path):
     assert apply_result["sandbox_name"] == "test-sandbox"
 
 
+def test_apply_with_plan_path_persists_saved_profile(monkeypatch, tmp_path):
+    """apply() with a saved plan persists that plan's profile instead of the request default."""
+    import json
+
+    monkeypatch.setattr("orchestrator.core.openshell_available", lambda: True)
+    monkeypatch.setattr("orchestrator.core.Path.home", lambda: tmp_path)
+    monkeypatch.setattr(
+        "orchestrator.core.run_cmd",
+        lambda *a, **kw: type("R", (), {"returncode": 0, "stderr": ""})(),
+    )
+
+    from orchestrator.core import apply
+
+    plan_result = plan("local", VALID_BLUEPRINT)
+    apply("default", VALID_BLUEPRINT, plan_path=plan_result["run_id"])
+
+    state_file = tmp_path / ".nemoclaw" / "state" / "runs" / plan_result["run_id"] / "plan.json"
+    saved = json.loads(state_file.read_text())
+    assert saved["profile"] == "local"
+
+
 def test_load_plan_not_found_raises(monkeypatch, tmp_path):
     """load_plan raises RunnerError(PLAN_NOT_FOUND) for nonexistent ref."""
     monkeypatch.setattr("orchestrator.core.Path.home", lambda: tmp_path)
@@ -267,3 +331,15 @@ def test_describe_blueprint(monkeypatch):
     assert result["sandbox"]["image"] == "openclaw:latest"
     assert result["min_openshell"] == "0.1.0"
     assert result["min_openclaw"] == "2026.3.0"
+
+
+def test_get_blueprint_current_alias(monkeypatch):
+    """get_blueprint accepts the current alias."""
+    monkeypatch.setattr("orchestrator.core.describe_blueprint", lambda path=None: {"version": "0.2.0"})
+    assert get_blueprint("current") == {"version": "0.2.0"}
+
+
+def test_get_blueprint_specific_version(monkeypatch):
+    """get_blueprint accepts the currently loaded version."""
+    monkeypatch.setattr("orchestrator.core.describe_blueprint", lambda path=None: {"version": "0.2.0"})
+    assert get_blueprint("0.2.0") == {"version": "0.2.0"}

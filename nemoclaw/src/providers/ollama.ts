@@ -3,7 +3,7 @@
 
 import { execSync } from "node:child_process";
 import type { InferenceProvider, InferenceProfileConfig } from "./interface.js";
-import { createProviderPlugin } from "./interface.js";
+import { createOpenShellProviderConfig, createProviderPlugin } from "./interface.js";
 
 const HOST_GATEWAY = "http://host.openshell.internal";
 const DEFAULT_OLLAMA_MODEL = "nemotron-3-nano:30b";
@@ -108,6 +108,10 @@ export const ollamaProvider: InferenceProvider = {
       credential_env: credentialEnv,
       credential_default: "ollama",
     };
+  },
+
+  toOpenShellProviderConfig(apiKey, endpointUrl) {
+    return createOpenShellProviderConfig("openai", this.credentialEnvVar, apiKey, endpointUrl);
   },
 
   describeProvider() {

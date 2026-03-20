@@ -3,7 +3,7 @@
 
 import type { ModelProviderEntry } from "../index.js";
 import type { InferenceProvider, InferenceProfileConfig, ModelOption } from "./interface.js";
-import { createProviderPlugin } from "./interface.js";
+import { createOpenShellProviderConfig, createProviderPlugin } from "./interface.js";
 import { validateApiKey } from "../onboard/validate.js";
 
 export const CURATED_MODELS: ModelOption[] = [
@@ -107,6 +107,10 @@ export const nvidiaBuildProvider: InferenceProvider = {
       model,
       credential_env: credentialEnv,
     };
+  },
+
+  toOpenShellProviderConfig(apiKey, endpointUrl) {
+    return createOpenShellProviderConfig("openai", this.credentialEnvVar, apiKey, endpointUrl);
   },
 
   describeProvider() {

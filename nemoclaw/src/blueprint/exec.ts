@@ -30,6 +30,8 @@ export interface BlueprintRunResult {
   exitCode: number;
 }
 
+const DEFAULT_API_BASE_URL = "http://127.0.0.1:18790";
+
 function failResult(action: BlueprintAction, message: string): BlueprintRunResult {
   return { success: false, runId: "error", action, output: message, exitCode: 1 };
 }
@@ -42,6 +44,25 @@ export function tryApiBaseUrl(): string | null {
   return process.env.NEMOCLAW_API_URL ?? null;
 }
 
+export async function probeApiBaseUrl(baseUrl: string): Promise<boolean> {
+  const healthUrl = `${baseUrl.replace(/\/+$/, "")}/health`;
+  try {
+    const response = await fetch(healthUrl, { method: "GET" });
+    return response.ok;
+  } catch {
+    return false;
+  }
+}
+
+export async function resolveApiBaseUrl(): Promise<string | null> {
+  const configuredUrl = tryApiBaseUrl();
+  if (configuredUrl) {
+    return (await probeApiBaseUrl(configuredUrl)) ? configuredUrl : null;
+  }
+
+  return (await probeApiBaseUrl(DEFAULT_API_BASE_URL)) ? DEFAULT_API_BASE_URL : null;
+}
+
 /**
  * Execute a blueprint action via the REST API instead of subprocess.
  * Dynamically imports BlueprintApiClient to avoid circular/eager loading.
@@ -49,8 +70,9 @@ export function tryApiBaseUrl(): string | null {
 export async function execBlueprintViaApi(
   options: BlueprintRunOptions,
   logger: PluginLogger,
+  baseUrlOverride?: string,
 ): Promise<BlueprintRunResult> {
-  const baseUrl = tryApiBaseUrl();
+  const baseUrl = baseUrlOverride ?? tryApiBaseUrl();
   if (!baseUrl) {
     return failResult(options.action, "NEMOCLAW_API_URL not set");
   }
@@ -124,10 +146,10 @@ export async function execBlueprint(
   options: BlueprintRunOptions,
   logger: PluginLogger,
 ): Promise<BlueprintRunResult> {
-  // When NEMOCLAW_API_URL is set, try API path first
-  if (tryApiBaseUrl()) {
-    logger.info(`Using API at ${tryApiBaseUrl()} for blueprint ${options.action}`);
-    const apiResult = await execBlueprintViaApi(options, logger);
+  const apiBaseUrl = await resolveApiBaseUrl();
+  if (apiBaseUrl) {
+    logger.info(`Using API at ${apiBaseUrl} for blueprint ${options.action}`);
+    const apiResult = await execBlueprintViaApi(options, logger, apiBaseUrl);
     if (apiResult.success) {
       return apiResult;
     }

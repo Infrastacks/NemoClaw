@@ -143,4 +143,24 @@ describe("BlueprintApiClient", () => {
     expect(result.version).toBe("0.1.0");
     expect(result.min_openshell).toBe("0.1.0");
   });
+
+  it("getBlueprint() GETs /v1/blueprints/{version}", async () => {
+    const body = {
+      version: "0.1.0",
+      description: "Test",
+      profiles: ["default"],
+      sandbox: { image: "openclaw:latest", name: "openclaw" },
+      min_openshell: "0.1.0",
+      min_openclaw: "2026.3.0",
+    };
+    vi.stubGlobal("fetch", mockFetchResponse(200, body));
+
+    const result = await client.getBlueprint("0.1.0");
+
+    expect(fetch).toHaveBeenCalledWith(
+      "http://127.0.0.1:18790/v1/blueprints/0.1.0",
+      expect.objectContaining({ method: "GET" }),
+    );
+    expect(result.version).toBe("0.1.0");
+  });
 });
