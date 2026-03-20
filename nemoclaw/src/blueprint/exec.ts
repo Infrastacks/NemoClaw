@@ -5,6 +5,8 @@ import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import type { PluginLogger } from "../index.js";
+import type { TelemetryEvent } from "../telemetry/types.js";
+import { parseTelemetryLine } from "../telemetry/parse.js";
 
 export type BlueprintAction = "plan" | "apply" | "status" | "rollback";
 
@@ -17,6 +19,7 @@ export interface BlueprintRunOptions {
   jsonOutput?: boolean;
   dryRun?: boolean;
   endpointUrl?: string;
+  onTelemetry?: (event: TelemetryEvent) => void;
 }
 
 export interface BlueprintRunResult {
@@ -151,6 +154,9 @@ export async function execBlueprint(
 
   return new Promise((resolve) => {
     const chunks: string[] = [];
+    let lineBuffer = "";
+    let streamRunId: string | undefined;
+
     const proc = spawn("python3", args, {
       cwd: options.blueprintPath,
       env: {
@@ -162,8 +168,23 @@ export async function execBlueprint(
     });
 
     proc.stdout.on("data", (data: Buffer) => {
-      const line = data.toString();
-      chunks.push(line);
+      const text = data.toString();
+      chunks.push(text);
+
+      if (options.onTelemetry) {
+        lineBuffer += text;
+        const lines = lineBuffer.split("\n");
+        lineBuffer = lines.pop() ?? "";
+        for (const line of lines) {
+          const event = parseTelemetryLine(line);
+          if (event) {
+            options.onTelemetry(event);
+            if (event.eventType === "run.id" && typeof event.data.runId === "string") {
+              streamRunId = event.data.runId;
+            }
+          }
+        }
+      }
     });
 
     proc.stderr.on("data", (data: Buffer) => {
@@ -173,10 +194,17 @@ export async function execBlueprint(
 
     proc.on("close", (code) => {
       const output = chunks.join("");
-      const runIdMatch = output.match(/^RUN_ID:(.+)$/m);
+
+      // Prefer run ID from telemetry stream; fall back to legacy regex
+      let runId = streamRunId;
+      if (!runId) {
+        const runIdMatch = output.match(/^RUN_ID:(.+)$/m);
+        runId = runIdMatch?.[1] ?? "unknown";
+      }
+
       resolve({
         success: code === 0,
-        runId: runIdMatch?.[1] ?? "unknown",
+        runId,
         action: options.action,
         output,
         exitCode: code ?? 1,

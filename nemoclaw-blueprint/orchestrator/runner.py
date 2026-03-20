@@ -6,11 +6,14 @@
 NemoClaw Blueprint Runner
 
 Thin CLI wrapper around orchestrator.core.
-Translates core results → stdout protocol lines and exit codes.
+Translates core results → structured telemetry events and exit codes.
+Legacy PROGRESS: / RUN_ID: stdout lines are preserved via StdoutSink for
+backward compatibility with exec.ts regex parsing.
 
 Protocol:
-  - stdout lines starting with PROGRESS:<0-100>:<label> are parsed as progress updates
-  - stdout line RUN_ID:<id> reports the run identifier
+  - stdout JSON lines are structured telemetry events (schemaVersion 1.0)
+  - stdout lines starting with PROGRESS:<0-100>:<label> are emitted alongside JSON (legacy compat)
+  - stdout line RUN_ID:<id> is emitted alongside JSON (legacy compat)
   - exit code 0 = success, non-zero = failure
 """
 
@@ -19,20 +22,23 @@ import json
 import sys
 
 from orchestrator import core
+from orchestrator.telemetry import (
+    RUN_ID,
+    SANDBOX_CREATED,
+    SANDBOX_DESTROYED,
+    SANDBOX_ERROR,
+    SANDBOX_PLANNED,
+    StdoutSink,
+    TelemetryEmitter,
+)
 
 
 def log(msg: str) -> None:
     print(msg, flush=True)
 
 
-def progress(pct: int, label: str) -> None:
-    print(f"PROGRESS:{pct}:{label}", flush=True)
-
-
-def emit_run_id() -> str:
-    rid = core.generate_run_id()
-    print(f"RUN_ID:{rid}", flush=True)
-    return rid
+def _cli_emitter() -> TelemetryEmitter:
+    return TelemetryEmitter(sinks=[StdoutSink()])
 
 
 def load_blueprint() -> dict:
@@ -55,7 +61,8 @@ def action_plan(
     dry_run: bool = False,
     endpoint_url: str | None = None,
 ) -> dict:
-    """Plan deployment — wraps core.plan with protocol output."""
+    """Plan deployment — wraps core.plan with telemetry output."""
+    emitter = _cli_emitter()
     rid = None
     try:
         result = core.plan(
@@ -63,15 +70,17 @@ def action_plan(
             blueprint,
             dry_run=dry_run,
             endpoint_url=endpoint_url,
-            on_progress=progress,
+            on_progress=emitter.progress,
         )
         rid = result["run_id"]
-        print(f"RUN_ID:{rid}", flush=True)
+        emitter.emit(RUN_ID, {"runId": rid})
+        emitter.emit(SANDBOX_PLANNED, {"profile": profile, "runId": rid})
         log(json.dumps(result, indent=2))
         return result
     except core.RunnerError as e:
         if rid:
-            print(f"RUN_ID:{rid}", flush=True)
+            emitter.emit(RUN_ID, {"runId": rid})
+        emitter.emit(SANDBOX_ERROR, {"error": e.message})
         log(f"ERROR: {e.message}")
         sys.exit(1)
 
@@ -82,7 +91,8 @@ def action_apply(
     plan_path: str | None = None,
     endpoint_url: str | None = None,
 ) -> None:
-    """Apply the plan — wraps core.apply with protocol output."""
+    """Apply the plan — wraps core.apply with telemetry output."""
+    emitter = _cli_emitter()
     rid = None
     try:
         result = core.apply(
@@ -90,21 +100,22 @@ def action_apply(
             blueprint,
             plan_path=plan_path,
             endpoint_url=endpoint_url,
-            on_progress=progress,
+            on_progress=emitter.progress,
         )
         rid = result["run_id"]
-        print(f"RUN_ID:{rid}", flush=True)
+        emitter.emit(RUN_ID, {"runId": rid})
+        emitter.emit(SANDBOX_CREATED, {"sandboxName": result["sandbox_name"], "runId": rid})
         log(result["message"])
     except core.RunnerError as e:
         if rid:
-            print(f"RUN_ID:{rid}", flush=True)
+            emitter.emit(RUN_ID, {"runId": rid})
+        emitter.emit(SANDBOX_ERROR, {"error": e.message})
         log(f"ERROR: {e.message}")
         sys.exit(1)
 
 
 def action_status(rid: str | None = None) -> None:
     """Report run status — wraps core.status with protocol output."""
-    emit_run_id()
     try:
         result = core.status(rid=rid)
         log(json.dumps(result) if isinstance(result, dict) else str(result))
@@ -114,12 +125,14 @@ def action_status(rid: str | None = None) -> None:
 
 
 def action_rollback(rid: str) -> None:
-    """Rollback a run — wraps core.rollback with protocol output."""
-    emit_run_id()
+    """Rollback a run — wraps core.rollback with telemetry output."""
+    emitter = _cli_emitter()
     try:
-        result = core.rollback(rid, on_progress=progress)
+        result = core.rollback(rid, on_progress=emitter.progress)
+        emitter.emit(SANDBOX_DESTROYED, {"runId": rid})
         log(result["message"])
     except core.RunnerError as e:
+        emitter.emit(SANDBOX_ERROR, {"error": e.message})
         log(f"ERROR: {e.message}")
         sys.exit(1)
 

@@ -26,6 +26,14 @@ from orchestrator.models import (
     RollbackResponse,
     RunStatusResponse,
 )
+from orchestrator.telemetry import (
+    SANDBOX_CREATED,
+    SANDBOX_DESTROYED,
+    SANDBOX_ERROR,
+    SANDBOX_PLANNED,
+    FileSink,
+    TelemetryEmitter,
+)
 
 app = FastAPI(
     title="NemoClaw Blueprint API",
@@ -46,6 +54,10 @@ _ERROR_STATUS: dict[str, int] = {
     core.SUBPROCESS_FAILED: 502,
     core.PLAN_NOT_FOUND: 404,
 }
+
+
+def _server_emitter() -> TelemetryEmitter:
+    return TelemetryEmitter(sinks=[FileSink()])
 
 
 def _handle_runner_error(exc: core.RunnerError) -> HTTPException:
@@ -97,6 +109,7 @@ def get_current_blueprint() -> BlueprintDescribeResponse:
 
 @app.post("/v1/blueprints/plan", response_model=PlanResponse)
 def blueprint_plan(req: PlanRequest) -> PlanResponse:
+    emitter = _server_emitter()
     try:
         blueprint = core.load_blueprint()
         result = core.plan(
@@ -104,14 +117,18 @@ def blueprint_plan(req: PlanRequest) -> PlanResponse:
             blueprint,
             dry_run=req.dry_run,
             endpoint_url=req.endpoint_url,
+            on_progress=emitter.progress,
         )
+        emitter.emit(SANDBOX_PLANNED, {"profile": req.profile, "runId": result["run_id"]})
         return PlanResponse(**result)
     except core.RunnerError as exc:
+        emitter.emit(SANDBOX_ERROR, {"error": exc.message})
         raise _handle_runner_error(exc) from exc
 
 
 @app.post("/v1/blueprints/apply", response_model=ApplyResponse)
 def blueprint_apply(req: ApplyRequest) -> ApplyResponse:
+    emitter = _server_emitter()
     try:
         blueprint = core.load_blueprint()
         result = core.apply(
@@ -119,9 +136,14 @@ def blueprint_apply(req: ApplyRequest) -> ApplyResponse:
             blueprint,
             plan_path=req.plan_path,
             endpoint_url=req.endpoint_url,
+            on_progress=emitter.progress,
+        )
+        emitter.emit(
+            SANDBOX_CREATED, {"sandboxName": result["sandbox_name"], "runId": result["run_id"]}
         )
         return ApplyResponse(**result)
     except core.RunnerError as exc:
+        emitter.emit(SANDBOX_ERROR, {"error": exc.message})
         raise _handle_runner_error(exc) from exc
 
 
@@ -147,10 +169,13 @@ def get_run(run_id: str) -> RunStatusResponse:
 
 @app.post("/v1/runs/{run_id}/rollback", response_model=RollbackResponse)
 def run_rollback(run_id: str) -> RollbackResponse:
+    emitter = _server_emitter()
     try:
-        result = core.rollback(run_id)
+        result = core.rollback(run_id, on_progress=emitter.progress)
+        emitter.emit(SANDBOX_DESTROYED, {"runId": run_id})
         return RollbackResponse(**result)
     except core.RunnerError as exc:
+        emitter.emit(SANDBOX_ERROR, {"error": exc.message})
         raise _handle_runner_error(exc) from exc
 
 

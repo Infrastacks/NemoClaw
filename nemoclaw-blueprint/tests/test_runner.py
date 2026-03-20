@@ -1,31 +1,16 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Tests for the blueprint runner — plan/validate logic and protocol output."""
+"""Tests for the blueprint runner — plan/validate logic and telemetry output."""
 
+import json
 import re
 
 import pytest
 
-from orchestrator.runner import action_plan, emit_run_id
+from orchestrator.runner import action_plan
 
-# --- emit_run_id ---
-
-
-def test_emit_run_id_format(capsys):
-    """Run ID must match nc-YYYYMMDD-HHMMSS-<8 hex chars> for downstream parsing."""
-    rid = emit_run_id()
-    assert re.fullmatch(r"nc-\d{8}-\d{6}-[0-9a-f]{8}", rid)
-
-
-def test_emit_run_id_prints_protocol_line(capsys):
-    """The TS plugin parses stdout for RUN_ID:<id> — verify the protocol line is emitted."""
-    rid = emit_run_id()
-    captured = capsys.readouterr()
-    assert captured.out.strip() == f"RUN_ID:{rid}"
-
-
-# --- action_plan with valid profile ---
+# --- Valid blueprint fixture ---
 
 VALID_BLUEPRINT = {
     "components": {
@@ -51,7 +36,6 @@ VALID_BLUEPRINT = {
 
 def test_action_plan_returns_correct_structure(monkeypatch, capsys):
     """Plan output must contain run_id, profile, sandbox config, and inference config."""
-    # Stub openshell_available so plan doesn't fail on CI
     monkeypatch.setattr("orchestrator.core.openshell_available", lambda: True)
 
     plan = action_plan("local", VALID_BLUEPRINT)
@@ -75,8 +59,7 @@ def test_action_plan_endpoint_override(monkeypatch, capsys):
     assert plan["inference"]["endpoint"] == "http://ncp:9090/v1"
 
 
-# --- action_plan with unknown profile ---
-
+# --- NCP blueprint ---
 
 NCP_BLUEPRINT = {
     "components": {
@@ -113,12 +96,59 @@ def test_action_plan_with_ncp_profile(monkeypatch, capsys):
 
 
 def test_action_plan_unknown_profile_exits(capsys):
-    """Unknown profile must exit non-zero and list available profiles — this is the error
-    path users actually hit when they typo a profile name."""
+    """Unknown profile must exit non-zero and list available profiles."""
     with pytest.raises(SystemExit) as exc_info:
         action_plan("nonexistent", VALID_BLUEPRINT)
 
     assert exc_info.value.code == 1
     captured = capsys.readouterr()
     assert "nonexistent" in captured.out
-    assert "local" in captured.out  # should list available profiles
+    assert "local" in captured.out
+
+
+# --- Telemetry event tests ---
+
+
+def _parse_json_lines(output: str) -> list[dict]:
+    """Extract all valid JSON objects from stdout lines."""
+    import contextlib
+
+    events = []
+    for line in output.split("\n"):
+        line = line.strip()
+        if line.startswith("{"):
+            with contextlib.suppress(json.JSONDecodeError):
+                events.append(json.loads(line))
+    return events
+
+
+def test_action_plan_emits_telemetry_events(monkeypatch, capsys):
+    """Plan action should emit structured JSON telemetry events."""
+    monkeypatch.setattr("orchestrator.core.openshell_available", lambda: True)
+
+    action_plan("local", VALID_BLUEPRINT)
+    captured = capsys.readouterr()
+    events = _parse_json_lines(captured.out)
+
+    event_types = [e["eventType"] for e in events if "eventType" in e]
+    assert "sandbox.progress" in event_types
+    assert "sandbox.planned" in event_types
+    assert "run.id" in event_types
+
+    # Verify event structure
+    for event in events:
+        if "schemaVersion" in event:
+            assert event["schemaVersion"] == "1.0"
+            assert "timestamp" in event
+            assert "sandboxId" in event
+
+
+def test_action_plan_still_emits_legacy_lines(monkeypatch, capsys):
+    """StdoutSink must emit legacy PROGRESS: and RUN_ID: lines for backward compat."""
+    monkeypatch.setattr("orchestrator.core.openshell_available", lambda: True)
+
+    result = action_plan("local", VALID_BLUEPRINT)
+    captured = capsys.readouterr()
+
+    assert f"RUN_ID:{result['run_id']}" in captured.out
+    assert "PROGRESS:" in captured.out
