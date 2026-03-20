@@ -1,0 +1,26 @@
+version: "3.8"
+
+services:
+  nemoclaw-agent:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    ports:
+      - "18789:18789"
+      - "18790:18790"
+    environment:
+      - CODICERA_ENDPOINT=${CODICERA_ENDPOINT:-https://codicera-api.infrastacks.workers.dev}
+      - SANDBOX_ID=${SANDBOX_ID}
+      - ORG_ID=${ORG_ID}
+    labels:
+      codicera.managed: "true"
+      codicera.org-id: "${ORG_ID}"
+      codicera.sandbox-id: "${SANDBOX_ID}"
+    restart: unless-stopped
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]

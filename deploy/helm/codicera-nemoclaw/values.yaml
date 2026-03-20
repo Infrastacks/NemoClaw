@@ -1,0 +1,55 @@
+replicaCount: 1
+
+image:
+  repository: ghcr.io/infrastacks/nemoclaw
+  pullPolicy: IfNotPresent
+  tag: ""
+
+agentImage:
+  repository: ""
+  tag: ""
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+codicera:
+  endpoint: "https://codicera-api.infrastacks.workers.dev"
+  sandboxId: ""
+  orgId: ""
+
+resources:
+  nemoclaw:
+    limits:
+      cpu: "4"
+      memory: 8Gi
+    requests:
+      cpu: "1"
+      memory: 2Gi
+  agent:
+    limits:
+      cpu: 200m
+      memory: 256Mi
+    requests:
+      cpu: 100m
+      memory: 128Mi
+
+gpu:
+  enabled: false
+  count: 1
+
+service:
+  type: ClusterIP
+  apiPort: 18789
+  metricsPort: 18790
+
+serviceAccount:
+  create: true
+  annotations: {}
+  name: ""
+
+nodeSelector: {}
+tolerations: []
+affinity: {}
+
+extraEnv: []

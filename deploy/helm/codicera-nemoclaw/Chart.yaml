@@ -1,0 +1,9 @@
+apiVersion: v2
+name: codicera-nemoclaw
+description: NemoClaw AI sandbox runtime with Codicera management agent
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+maintainers:
+  - name: Infrastacks
+    url: https://github.com/infrastacks

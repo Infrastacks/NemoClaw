@@ -1,0 +1,72 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nemoclaw
+  namespace: codicera-default
+  labels:
+    app: nemoclaw
+    codicera.io/managed: "true"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: nemoclaw
+  template:
+    metadata:
+      labels:
+        app: nemoclaw
+        codicera.io/managed: "true"
+        # REPLACE: codicera.io/sandbox-id with your sandbox ID
+        codicera.io/sandbox-id: "REPLACE_SANDBOX_ID"
+        # REPLACE: codicera.io/org-id with your org ID
+        codicera.io/org-id: "REPLACE_ORG_ID"
+    spec:
+      serviceAccountName: nemoclaw-agent
+      containers:
+        - name: nemoclaw
+          # REPLACE: image with your GHCR image or custom registry
+          image: ghcr.io/infrastacks/nemoclaw:latest
+          ports:
+            - name: api
+              containerPort: 18789
+            - name: metrics
+              containerPort: 18790
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: api
+            initialDelaySeconds: 15
+            periodSeconds: 30
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: api
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: "1"
+              memory: 2Gi
+            limits:
+              cpu: "4"
+              memory: 8Gi
+        - name: agent
+          # REPLACE: image with your agent sidecar image
+          image: ghcr.io/infrastacks/nemoclaw:latest
+          env:
+            - name: CODICERA_ENDPOINT
+              # REPLACE: with your Codicera API endpoint
+              value: "https://codicera-api.infrastacks.workers.dev"
+            - name: SANDBOX_ID
+              # REPLACE: with your sandbox ID
+              value: "REPLACE_SANDBOX_ID"
+            - name: ORG_ID
+              # REPLACE: with your org ID
+              value: "REPLACE_ORG_ID"
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 200m
+              memory: 256Mi

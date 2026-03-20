@@ -1,0 +1,38 @@
+services:
+  nemoclaw-agent:
+    image: ghcr.io/infrastacks/nemoclaw:${NEMOCLAW_VERSION:-latest}
+    ports:
+      - "${HOST_PORT_API:-18789}:18789"
+      - "${HOST_PORT_METRICS:-18790}:18790"
+    environment:
+      - CODICERA_ENDPOINT=${CODICERA_ENDPOINT:-https://codicera-api.infrastacks.workers.dev}
+      - SANDBOX_ID=${SANDBOX_ID}
+      - ORG_ID=${ORG_ID}
+    volumes:
+      - ${CODICERA_CERT_DIR:-./certs}:/etc/codicera:ro
+    labels:
+      codicera.managed: "true"
+      codicera.org-id: "${ORG_ID}"
+      codicera.sandbox-id: "${SANDBOX_ID}"
+    restart: always
+    deploy:
+      resources:
+        limits:
+          cpus: "${CPU_LIMIT:-4}"
+          memory: "${MEMORY_LIMIT:-8g}"
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:18789/health"]
+      interval: 30s
+      timeout: 5s
+      start_period: 15s
+      retries: 5
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "5"

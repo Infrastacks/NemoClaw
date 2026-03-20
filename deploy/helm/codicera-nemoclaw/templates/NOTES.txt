@@ -1,0 +1,10 @@
+NemoClaw has been deployed with Codicera management agent.
+
+Runtime API:
+  kubectl port-forward svc/{{ include "codicera-nemoclaw.fullname" . }} 18789:{{ .Values.service.apiPort }}
+
+Metrics:
+  kubectl port-forward svc/{{ include "codicera-nemoclaw.fullname" . }} 18790:{{ .Values.service.metricsPort }}
+
+Codicera endpoint: {{ .Values.codicera.endpoint }}
+Sandbox ID: {{ .Values.codicera.sandboxId }}
