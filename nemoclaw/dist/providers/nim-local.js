@@ -16,6 +16,7 @@ exports.nimLocalProvider = {
     requiresApiKey: true,
     defaultCredential: "",
     defaultEndpoint: "http://nim-service.local:8000/v1",
+    providerType: "local",
     isLocal: true,
     isExperimental: true,
     curatedModels: [],
@@ -40,8 +41,21 @@ exports.nimLocalProvider = {
     defaultModelId(discoveredModels) {
         return discoveredModels[0] ?? "";
     },
+    async validateCredentials(apiKey, endpointUrl) {
+        const result = await (0, validate_js_1.validateApiKey)(apiKey, endpointUrl);
+        return result.valid;
+    },
     toProviderPlugin(model, credentialEnv) {
         return (0, interface_js_1.createProviderPlugin)(model, credentialEnv, []);
+    },
+    toBlueprintProfile(model, credentialEnv) {
+        return {
+            provider_type: "openai",
+            provider_name: this.providerName,
+            endpoint: this.defaultEndpoint,
+            model,
+            credential_env: credentialEnv,
+        };
     },
     describeProvider() {
         return "Local NIM";

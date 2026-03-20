@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import type { ModelProviderEntry } from "../index.js";
-import type { InferenceProvider, ModelOption } from "./interface.js";
+import type { InferenceProvider, InferenceProfileConfig, ModelOption } from "./interface.js";
 import { createProviderPlugin } from "./interface.js";
 import { validateApiKey } from "../onboard/validate.js";
 
@@ -52,6 +52,7 @@ export const nvidiaBuildProvider: InferenceProvider = {
   requiresApiKey: true,
   defaultCredential: "",
   defaultEndpoint: "https://integrate.api.nvidia.com/v1",
+  providerType: "nvidia",
   isLocal: false,
   isExperimental: false,
   curatedModels: CURATED_MODELS,
@@ -89,8 +90,23 @@ export const nvidiaBuildProvider: InferenceProvider = {
     return first?.id ?? CURATED_MODELS[0].id;
   },
 
+  async validateCredentials(apiKey, endpointUrl) {
+    const result = await validateApiKey(apiKey, endpointUrl);
+    return result.valid;
+  },
+
   toProviderPlugin(model, credentialEnv) {
     return createProviderPlugin(model, credentialEnv, DEFAULT_PLUGIN_MODELS);
+  },
+
+  toBlueprintProfile(model, credentialEnv): InferenceProfileConfig {
+    return {
+      provider_type: "nvidia",
+      provider_name: this.providerName,
+      endpoint: this.defaultEndpoint,
+      model,
+      credential_env: credentialEnv,
+    };
   },
 
   describeProvider() {

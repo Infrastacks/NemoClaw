@@ -56,6 +56,7 @@ exports.ollamaProvider = {
     requiresApiKey: false,
     defaultCredential: "ollama",
     defaultEndpoint: `${HOST_GATEWAY}:11434/v1`,
+    providerType: "local",
     isLocal: true,
     isExperimental: false,
     curatedModels: [],
@@ -84,8 +85,21 @@ exports.ollamaProvider = {
         const def = getDefaultOllamaModel();
         return discoveredModels.includes(def) ? def : discoveredModels[0] ?? DEFAULT_OLLAMA_MODEL;
     },
+    async validateCredentials() {
+        return detectOllama().running;
+    },
     toProviderPlugin(model, credentialEnv) {
         return (0, interface_js_1.createProviderPlugin)(model, credentialEnv, []);
+    },
+    toBlueprintProfile(model, credentialEnv) {
+        return {
+            provider_type: "openai",
+            provider_name: this.providerName,
+            endpoint: this.defaultEndpoint,
+            model,
+            credential_env: credentialEnv,
+            credential_default: "ollama",
+        };
     },
     describeProvider() {
         return "Local Ollama";

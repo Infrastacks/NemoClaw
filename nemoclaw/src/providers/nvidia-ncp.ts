@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import type { InferenceProvider } from "./interface.js";
+import type { InferenceProvider, InferenceProfileConfig } from "./interface.js";
 import { createProviderPlugin } from "./interface.js";
 import { validateApiKey } from "../onboard/validate.js";
 import { promptInput } from "../onboard/prompt.js";
@@ -17,6 +17,7 @@ export const nvidiaNcpProvider: InferenceProvider = {
   requiresApiKey: true,
   defaultCredential: "",
   defaultEndpoint: "",
+  providerType: "nvidia",
   isLocal: false,
   isExperimental: false,
   curatedModels: CURATED_MODELS,
@@ -60,8 +61,24 @@ export const nvidiaNcpProvider: InferenceProvider = {
     return first?.id ?? CURATED_MODELS[0].id;
   },
 
+  async validateCredentials(apiKey, endpointUrl) {
+    const result = await validateApiKey(apiKey, endpointUrl);
+    return result.valid;
+  },
+
   toProviderPlugin(model, credentialEnv) {
     return createProviderPlugin(model, credentialEnv, []);
+  },
+
+  toBlueprintProfile(model, credentialEnv): InferenceProfileConfig {
+    return {
+      provider_type: "nvidia",
+      provider_name: this.providerName,
+      endpoint: "",
+      model,
+      credential_env: credentialEnv,
+      dynamic_endpoint: true,
+    };
   },
 
   describeProvider() {

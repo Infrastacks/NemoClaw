@@ -14,6 +14,16 @@ export interface EndpointResolutionContext {
     ncpPartner?: string;
     nonInteractive: boolean;
 }
+export type ProviderType = "nvidia" | "openai" | "azure_openai" | "bedrock" | "vertex" | "local";
+export interface InferenceProfileConfig {
+    provider_type: string;
+    provider_name: string;
+    endpoint: string;
+    model: string;
+    credential_env?: string;
+    credential_default?: string;
+    dynamic_endpoint?: boolean;
+}
 export interface InferenceProvider {
     readonly id: string;
     readonly label: string;
@@ -25,6 +35,7 @@ export interface InferenceProvider {
     readonly defaultCredential: string;
     readonly defaultEndpoint: string;
     readonly isLocal: boolean;
+    readonly providerType: ProviderType;
     readonly isExperimental: boolean;
     readonly curatedModels: ModelOption[];
     readonly requiredEnvVars: string[];
@@ -35,7 +46,9 @@ export interface InferenceProvider {
     discoverModels(apiKey: string, endpointUrl: string): Promise<string[]>;
     buildModelOptions(discoveredModels: string[]): ModelOption[];
     defaultModelId(discoveredModels: string[]): string;
+    validateCredentials(apiKey: string, endpointUrl: string): Promise<boolean>;
     toProviderPlugin(model: string | null, credentialEnv: string): ProviderPlugin;
+    toBlueprintProfile(model: string, credentialEnv: string): InferenceProfileConfig;
     describeProvider(): string;
     estimateCost?(model: string, tokens: number): number;
 }

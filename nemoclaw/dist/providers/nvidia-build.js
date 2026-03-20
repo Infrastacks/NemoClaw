@@ -49,6 +49,7 @@ exports.nvidiaBuildProvider = {
     requiresApiKey: true,
     defaultCredential: "",
     defaultEndpoint: "https://integrate.api.nvidia.com/v1",
+    providerType: "nvidia",
     isLocal: false,
     isExperimental: false,
     curatedModels: exports.CURATED_MODELS,
@@ -80,8 +81,21 @@ exports.nvidiaBuildProvider = {
         const first = exports.CURATED_MODELS.find((m) => discoveredModels.includes(m.id));
         return first?.id ?? exports.CURATED_MODELS[0].id;
     },
+    async validateCredentials(apiKey, endpointUrl) {
+        const result = await (0, validate_js_1.validateApiKey)(apiKey, endpointUrl);
+        return result.valid;
+    },
     toProviderPlugin(model, credentialEnv) {
         return (0, interface_js_1.createProviderPlugin)(model, credentialEnv, DEFAULT_PLUGIN_MODELS);
+    },
+    toBlueprintProfile(model, credentialEnv) {
+        return {
+            provider_type: "nvidia",
+            provider_name: this.providerName,
+            endpoint: this.defaultEndpoint,
+            model,
+            credential_env: credentialEnv,
+        };
     },
     describeProvider() {
         return "NVIDIA Cloud API";

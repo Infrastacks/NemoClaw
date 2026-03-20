@@ -9,7 +9,13 @@ vi.mock("node:child_process", () => ({
   execFileSync: vi.fn(() => ""),
 }));
 
+// Mock validate.ts to prevent actual network calls
+vi.mock("../onboard/validate.js", () => ({
+  validateApiKey: vi.fn(),
+}));
+
 const { execSync } = await import("node:child_process");
+const { validateApiKey } = await import("../onboard/validate.js");
 
 const { nvidiaBuildProvider, CURATED_MODELS } = await import("./nvidia-build.js");
 const { nvidiaNcpProvider } = await import("./nvidia-ncp.js");
@@ -35,6 +41,7 @@ describe("nvidia-build provider", () => {
     expect(nvidiaBuildProvider.defaultEndpoint).toBe("https://integrate.api.nvidia.com/v1");
     expect(nvidiaBuildProvider.isExperimental).toBe(false);
     expect(nvidiaBuildProvider.isLocal).toBe(false);
+    expect(nvidiaBuildProvider.providerType).toBe("nvidia");
   });
 
   it("curatedModels contains expected entries", () => {
@@ -92,6 +99,7 @@ describe("nvidia-ncp provider", () => {
     expect(nvidiaNcpProvider.defaultEndpoint).toBe("");
     expect(nvidiaNcpProvider.isExperimental).toBe(false);
     expect(nvidiaNcpProvider.isLocal).toBe(false);
+    expect(nvidiaNcpProvider.providerType).toBe("nvidia");
   });
 
   it("endpointTypes includes both ncp and custom", () => {
@@ -128,6 +136,7 @@ describe("nim-local provider", () => {
     expect(nimLocalProvider.defaultEndpoint).toBe("http://nim-service.local:8000/v1");
     expect(nimLocalProvider.isExperimental).toBe(true);
     expect(nimLocalProvider.isLocal).toBe(true);
+    expect(nimLocalProvider.providerType).toBe("local");
   });
 
   it("toProviderPlugin returns valid shape", () => {
@@ -164,6 +173,7 @@ describe("vllm provider", () => {
     expect(vllmProvider.defaultEndpoint).toBe("http://host.openshell.internal:8000/v1");
     expect(vllmProvider.isExperimental).toBe(true);
     expect(vllmProvider.isLocal).toBe(true);
+    expect(vllmProvider.providerType).toBe("local");
   });
 
   it("toProviderPlugin uses OpenAI auth label", () => {
@@ -192,6 +202,7 @@ describe("ollama provider", () => {
     expect(ollamaProvider.defaultEndpoint).toBe("http://host.openshell.internal:11434/v1");
     expect(ollamaProvider.isExperimental).toBe(false);
     expect(ollamaProvider.isLocal).toBe(true);
+    expect(ollamaProvider.providerType).toBe("local");
   });
 
   it("parseOllamaList parses standard output", () => {
@@ -250,5 +261,115 @@ describe("ollama provider", () => {
 
   it("describeProvider returns correct label", () => {
     expect(ollamaProvider.describeProvider()).toBe("Local Ollama");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// validateCredentials (Gap 2)
+// ---------------------------------------------------------------------------
+
+describe("validateCredentials", () => {
+  it("nvidia-build returns true on successful validation", async () => {
+    vi.mocked(validateApiKey).mockResolvedValue({ valid: true, models: [] });
+    const result = await nvidiaBuildProvider.validateCredentials("key", "https://endpoint/v1");
+    expect(result).toBe(true);
+    expect(validateApiKey).toHaveBeenCalledWith("key", "https://endpoint/v1");
+  });
+
+  it("nvidia-build returns false on failed validation", async () => {
+    vi.mocked(validateApiKey).mockResolvedValue({ valid: false, models: [] });
+    const result = await nvidiaBuildProvider.validateCredentials("bad-key", "https://endpoint/v1");
+    expect(result).toBe(false);
+  });
+
+  it("nvidia-ncp delegates to validateApiKey", async () => {
+    vi.mocked(validateApiKey).mockResolvedValue({ valid: true, models: [] });
+    expect(await nvidiaNcpProvider.validateCredentials("key", "https://ncp/v1")).toBe(true);
+  });
+
+  it("nim-local delegates to validateApiKey", async () => {
+    vi.mocked(validateApiKey).mockResolvedValue({ valid: true, models: [] });
+    expect(await nimLocalProvider.validateCredentials("key", "http://nim:8000/v1")).toBe(true);
+  });
+
+  it("vllm delegates to validateApiKey", async () => {
+    vi.mocked(validateApiKey).mockResolvedValue({ valid: false, models: [] });
+    expect(await vllmProvider.validateCredentials("dummy", "http://host:8000/v1")).toBe(false);
+  });
+
+  it("ollama returns true when ollama is running", async () => {
+    vi.mocked(execSync).mockImplementation(() => "");
+    const result = await ollamaProvider.validateCredentials("", "");
+    expect(result).toBe(true);
+  });
+
+  it("ollama returns false when ollama is not running", async () => {
+    vi.mocked(execSync).mockImplementation((cmd) => {
+      if (typeof cmd === "string" && cmd.includes("curl")) throw new Error("not running");
+      return "";
+    });
+    const result = await ollamaProvider.validateCredentials("", "");
+    expect(result).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// toBlueprintProfile (Gap 3)
+// ---------------------------------------------------------------------------
+
+describe("toBlueprintProfile", () => {
+  it("nvidia-build returns nvidia provider_type with endpoint", () => {
+    const profile = nvidiaBuildProvider.toBlueprintProfile("nvidia/test-model", "NVIDIA_API_KEY");
+    expect(profile).toEqual({
+      provider_type: "nvidia",
+      provider_name: "nvidia-nim",
+      endpoint: "https://integrate.api.nvidia.com/v1",
+      model: "nvidia/test-model",
+      credential_env: "NVIDIA_API_KEY",
+    });
+  });
+
+  it("nvidia-ncp returns dynamic_endpoint with empty endpoint", () => {
+    const profile = nvidiaNcpProvider.toBlueprintProfile("nvidia/test-model", "NVIDIA_API_KEY");
+    expect(profile.dynamic_endpoint).toBe(true);
+    expect(profile.endpoint).toBe("");
+    expect(profile.provider_type).toBe("nvidia");
+  });
+
+  it("nim-local returns openai provider_type", () => {
+    const profile = nimLocalProvider.toBlueprintProfile("test-model", "NIM_API_KEY");
+    expect(profile.provider_type).toBe("openai");
+    expect(profile.endpoint).toBe("http://nim-service.local:8000/v1");
+    expect(profile.provider_name).toBe("nim-local");
+  });
+
+  it("vllm returns credential_default dummy", () => {
+    const profile = vllmProvider.toBlueprintProfile("test-model", "OPENAI_API_KEY");
+    expect(profile.credential_default).toBe("dummy");
+    expect(profile.provider_type).toBe("openai");
+  });
+
+  it("ollama returns credential_default ollama", () => {
+    const profile = ollamaProvider.toBlueprintProfile("nemotron-3-nano:30b", "OPENAI_API_KEY");
+    expect(profile.credential_default).toBe("ollama");
+    expect(profile.provider_type).toBe("openai");
+    expect(profile.provider_name).toBe("ollama-local");
+  });
+
+  it("all profiles conform to InferenceProfileConfig shape", () => {
+    const providers = [
+      { p: nvidiaBuildProvider, model: "m", env: "E" },
+      { p: nvidiaNcpProvider, model: "m", env: "E" },
+      { p: nimLocalProvider, model: "m", env: "E" },
+      { p: vllmProvider, model: "m", env: "E" },
+      { p: ollamaProvider, model: "m", env: "E" },
+    ];
+    for (const { p, model, env } of providers) {
+      const profile = p.toBlueprintProfile(model, env);
+      expect(typeof profile.provider_type).toBe("string");
+      expect(typeof profile.provider_name).toBe("string");
+      expect(typeof profile.endpoint).toBe("string");
+      expect(typeof profile.model).toBe("string");
+    }
   });
 });

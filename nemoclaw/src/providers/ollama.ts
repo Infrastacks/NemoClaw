@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { execSync } from "node:child_process";
-import type { InferenceProvider } from "./interface.js";
+import type { InferenceProvider, InferenceProfileConfig } from "./interface.js";
 import { createProviderPlugin } from "./interface.js";
 
 const HOST_GATEWAY = "http://host.openshell.internal";
@@ -57,6 +57,7 @@ export const ollamaProvider: InferenceProvider = {
   requiresApiKey: false,
   defaultCredential: "ollama",
   defaultEndpoint: `${HOST_GATEWAY}:11434/v1`,
+  providerType: "local",
   isLocal: true,
   isExperimental: false,
   curatedModels: [],
@@ -90,8 +91,23 @@ export const ollamaProvider: InferenceProvider = {
     return discoveredModels.includes(def) ? def : discoveredModels[0] ?? DEFAULT_OLLAMA_MODEL;
   },
 
+  async validateCredentials() {
+    return detectOllama().running;
+  },
+
   toProviderPlugin(model, credentialEnv) {
     return createProviderPlugin(model, credentialEnv, []);
+  },
+
+  toBlueprintProfile(model, credentialEnv): InferenceProfileConfig {
+    return {
+      provider_type: "openai",
+      provider_name: this.providerName,
+      endpoint: this.defaultEndpoint,
+      model,
+      credential_env: credentialEnv,
+      credential_default: "ollama",
+    };
   },
 
   describeProvider() {

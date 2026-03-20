@@ -1,1 +1,1 @@
-{"version":3,"file":"nim-local.d.ts","sourceRoot":"","sources":["../../src/providers/nim-local.ts"],"names":[],"mappings":"AAGA,OAAO,KAAK,EAAE,iBAAiB,EAAE,MAAM,gBAAgB,CAAC;AAKxD,eAAO,MAAM,gBAAgB,EAAE,iBAgD9B,CAAC"}
+{"version":3,"file":"nim-local.d.ts","sourceRoot":"","sources":["../../src/providers/nim-local.ts"],"names":[],"mappings":"AAGA,OAAO,KAAK,EAAE,iBAAiB,EAA0B,MAAM,gBAAgB,CAAC;AAKhF,eAAO,MAAM,gBAAgB,EAAE,iBAgE9B,CAAC"}

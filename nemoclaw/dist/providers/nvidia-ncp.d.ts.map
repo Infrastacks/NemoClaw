@@ -1,1 +1,1 @@
-{"version":3,"file":"nvidia-ncp.d.ts","sourceRoot":"","sources":["../../src/providers/nvidia-ncp.ts"],"names":[],"mappings":"AAGA,OAAO,KAAK,EAAE,iBAAiB,EAAE,MAAM,gBAAgB,CAAC;AAMxD,eAAO,MAAM,iBAAiB,EAAE,iBA4D/B,CAAC"}
+{"version":3,"file":"nvidia-ncp.d.ts","sourceRoot":"","sources":["../../src/providers/nvidia-ncp.ts"],"names":[],"mappings":"AAGA,OAAO,KAAK,EAAE,iBAAiB,EAA0B,MAAM,gBAAgB,CAAC;AAMhF,eAAO,MAAM,iBAAiB,EAAE,iBA6E/B,CAAC"}

@@ -3,6 +3,8 @@
 
 export type {
   InferenceProvider,
+  InferenceProfileConfig,
+  ProviderType,
   ModelOption,
   WizardContext,
   EndpointResolutionContext,

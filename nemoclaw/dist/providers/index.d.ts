@@ -1,4 +1,4 @@
-export type { InferenceProvider, ModelOption, WizardContext, EndpointResolutionContext, } from "./interface.js";
+export type { InferenceProvider, InferenceProfileConfig, ProviderType, ModelOption, WizardContext, EndpointResolutionContext, } from "./interface.js";
 export { createProviderPlugin } from "./interface.js";
 export { ProviderRegistry } from "./registry.js";
 export { nvidiaBuildProvider, CURATED_MODELS } from "./nvidia-build.js";

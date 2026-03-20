@@ -1,1 +1,1 @@
-{"version":3,"file":"vllm.d.ts","sourceRoot":"","sources":["../../src/providers/vllm.ts"],"names":[],"mappings":"AAGA,OAAO,KAAK,EAAE,iBAAiB,EAAE,MAAM,gBAAgB,CAAC;AAMxD,eAAO,MAAM,YAAY,EAAE,iBAgD1B,CAAC"}
+{"version":3,"file":"vllm.d.ts","sourceRoot":"","sources":["../../src/providers/vllm.ts"],"names":[],"mappings":"AAGA,OAAO,KAAK,EAAE,iBAAiB,EAA0B,MAAM,gBAAgB,CAAC;AAMhF,eAAO,MAAM,YAAY,EAAE,iBAiE1B,CAAC"}
