@@ -9,7 +9,6 @@ import pytest
 
 from orchestrator.runner import action_plan, emit_run_id
 
-
 # --- emit_run_id ---
 
 
@@ -53,7 +52,7 @@ VALID_BLUEPRINT = {
 def test_action_plan_returns_correct_structure(monkeypatch, capsys):
     """Plan output must contain run_id, profile, sandbox config, and inference config."""
     # Stub openshell_available so plan doesn't fail on CI
-    monkeypatch.setattr("orchestrator.runner.openshell_available", lambda: True)
+    monkeypatch.setattr("orchestrator.core.openshell_available", lambda: True)
 
     plan = action_plan("local", VALID_BLUEPRINT)
 
@@ -69,7 +68,7 @@ def test_action_plan_returns_correct_structure(monkeypatch, capsys):
 
 def test_action_plan_endpoint_override(monkeypatch, capsys):
     """When --endpoint-url is passed, it should override the profile's endpoint."""
-    monkeypatch.setattr("orchestrator.runner.openshell_available", lambda: True)
+    monkeypatch.setattr("orchestrator.core.openshell_available", lambda: True)
 
     plan = action_plan("local", VALID_BLUEPRINT, endpoint_url="http://ncp:9090/v1")
 
@@ -104,7 +103,7 @@ NCP_BLUEPRINT = {
 
 def test_action_plan_with_ncp_profile(monkeypatch, capsys):
     """NCP profile with dynamic_endpoint must use the endpoint URL override."""
-    monkeypatch.setattr("orchestrator.runner.openshell_available", lambda: True)
+    monkeypatch.setattr("orchestrator.core.openshell_available", lambda: True)
 
     plan = action_plan("ncp", NCP_BLUEPRINT, endpoint_url="https://ncp.example.com/v1")
 

@@ -2,6 +2,8 @@
 // SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 Object.defineProperty(exports, "__esModule", { value: true });
+exports.tryApiBaseUrl = tryApiBaseUrl;
+exports.execBlueprintViaApi = execBlueprintViaApi;
 exports.execBlueprint = execBlueprint;
 const node_child_process_1 = require("node:child_process");
 const node_fs_1 = require("node:fs");
@@ -9,7 +11,96 @@ const node_path_1 = require("node:path");
 function failResult(action, message) {
     return { success: false, runId: "error", action, output: message, exitCode: 1 };
 }
+/**
+ * Check for NEMOCLAW_API_URL env var. Returns the URL or null.
+ * No auto-probing of default port to avoid latency on every invocation.
+ */
+function tryApiBaseUrl() {
+    return process.env.NEMOCLAW_API_URL ?? null;
+}
+/**
+ * Execute a blueprint action via the REST API instead of subprocess.
+ * Dynamically imports BlueprintApiClient to avoid circular/eager loading.
+ */
+async function execBlueprintViaApi(options, logger) {
+    const baseUrl = tryApiBaseUrl();
+    if (!baseUrl) {
+        return failResult(options.action, "NEMOCLAW_API_URL not set");
+    }
+    try {
+        const { BlueprintApiClient } = await import("../api/client.js");
+        const client = new BlueprintApiClient(baseUrl);
+        switch (options.action) {
+            case "plan": {
+                const result = await client.plan({
+                    profile: options.profile,
+                    dry_run: options.dryRun,
+                    endpoint_url: options.endpointUrl,
+                });
+                return {
+                    success: true,
+                    runId: result.run_id,
+                    action: "plan",
+                    output: JSON.stringify(result),
+                    exitCode: 0,
+                };
+            }
+            case "apply": {
+                const result = await client.apply({
+                    profile: options.profile,
+                    plan_path: options.planPath,
+                    endpoint_url: options.endpointUrl,
+                });
+                return {
+                    success: true,
+                    runId: result.run_id,
+                    action: "apply",
+                    output: JSON.stringify(result),
+                    exitCode: 0,
+                };
+            }
+            case "rollback": {
+                if (!options.runId) {
+                    return failResult("rollback", "runId is required for rollback");
+                }
+                const result = await client.rollback(options.runId);
+                return {
+                    success: true,
+                    runId: result.run_id,
+                    action: "rollback",
+                    output: JSON.stringify(result),
+                    exitCode: 0,
+                };
+            }
+            case "status": {
+                const result = options.runId
+                    ? await client.getRun(options.runId)
+                    : (await client.listRuns())[0];
+                return {
+                    success: true,
+                    runId: result?.run_id ?? "unknown",
+                    action: "status",
+                    output: JSON.stringify(result ?? {}),
+                    exitCode: 0,
+                };
+            }
+        }
+    }
+    catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        return failResult(options.action, message);
+    }
+}
 async function execBlueprint(options, logger) {
+    // When NEMOCLAW_API_URL is set, try API path first
+    if (tryApiBaseUrl()) {
+        logger.info(`Using API at ${tryApiBaseUrl()} for blueprint ${options.action}`);
+        const apiResult = await execBlueprintViaApi(options, logger);
+        if (apiResult.success) {
+            return apiResult;
+        }
+        logger.warn(`API execution failed (${apiResult.output}), falling back to subprocess`);
+    }
     const runnerPath = (0, node_path_1.join)(options.blueprintPath, "orchestrator", "runner.py");
     if (!(0, node_fs_1.existsSync)(runnerPath)) {
         const msg = `Blueprint runner not found at ${runnerPath}. Is the blueprint installed correctly?`;

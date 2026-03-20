@@ -17,5 +17,15 @@ export interface BlueprintRunResult {
     output: string;
     exitCode: number;
 }
+/**
+ * Check for NEMOCLAW_API_URL env var. Returns the URL or null.
+ * No auto-probing of default port to avoid latency on every invocation.
+ */
+export declare function tryApiBaseUrl(): string | null;
+/**
+ * Execute a blueprint action via the REST API instead of subprocess.
+ * Dynamically imports BlueprintApiClient to avoid circular/eager loading.
+ */
+export declare function execBlueprintViaApi(options: BlueprintRunOptions, logger: PluginLogger): Promise<BlueprintRunResult>;
 export declare function execBlueprint(options: BlueprintRunOptions, logger: PluginLogger): Promise<BlueprintRunResult>;
 //# sourceMappingURL=exec.d.ts.map
