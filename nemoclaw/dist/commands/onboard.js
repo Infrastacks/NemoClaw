@@ -128,6 +128,9 @@ async function cliOnboard(opts) {
                 if (credentialEnv === "NVIDIA_API_KEY") {
                     logger.info("Get an API key from: https://build.nvidia.com/settings/api-keys");
                 }
+                else if (credentialEnv === "AZURE_OPENAI_API_KEY") {
+                    logger.info("Get an API key from the Azure Portal under your OpenAI resource → Keys and Endpoint");
+                }
                 apiKey = await (0, prompt_js_1.promptInput)("Enter your API key");
             }
         }
@@ -143,14 +146,21 @@ async function cliOnboard(opts) {
     // For local providers, validation is best-effort since the service may not be running yet.
     logger.info("");
     logger.info(`Validating ${provider.requiresApiKey ? "credential" : "endpoint"} against ${endpointUrl}...`);
-    const validation = await (0, validate_js_1.validateApiKey)(apiKey, endpointUrl);
+    const validateOpts = provider.providerType === "azure_openai"
+        ? (0, validate_js_1.azureValidateOptions)(apiKey, endpointUrl) : undefined;
+    const validation = await (0, validate_js_1.validateApiKey)(apiKey, endpointUrl, validateOpts);
     if (!validation.valid) {
         if (provider.isLocal) {
             logger.warn(`Could not reach ${endpointUrl} (${validation.error ?? "unknown error"}). Continuing anyway — the service may not be running yet.`);
         }
         else {
             logger.error(`API key validation failed: ${validation.error ?? "unknown error"}`);
-            logger.info("Check your key at https://build.nvidia.com/settings/api-keys");
+            if (credentialEnv === "AZURE_OPENAI_API_KEY") {
+                logger.info("Check your key and endpoint in the Azure Portal under your OpenAI resource → Keys and Endpoint");
+            }
+            else {
+                logger.info("Check your key at https://build.nvidia.com/settings/api-keys");
+            }
             return;
         }
     }

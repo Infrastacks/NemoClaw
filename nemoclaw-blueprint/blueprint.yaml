@@ -9,6 +9,7 @@ digest: ""  # Computed at release time
 profiles:
   - default
   - ncp
+  - azure
   - nim-local
   - vllm
 
@@ -37,6 +38,14 @@ components:
         endpoint: ""
         model: "nvidia/nemotron-3-super-120b-a12b"
         credential_env: "NVIDIA_API_KEY"
+        dynamic_endpoint: true
+
+      azure:
+        provider_type: "openai"
+        provider_name: "azure-openai"
+        endpoint: ""
+        model: ""
+        credential_env: "AZURE_OPENAI_API_KEY"
         dynamic_endpoint: true
 
       nim-local:

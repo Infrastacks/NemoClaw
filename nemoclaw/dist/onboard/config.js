@@ -31,6 +31,8 @@ function describeOnboardProvider(config) {
             return "Local NIM";
         case "ncp":
             return "NVIDIA Cloud Partner";
+        case "azure":
+            return "Azure OpenAI";
         case "custom":
             return "Managed Inference Route";
         default:

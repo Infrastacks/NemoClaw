@@ -7,11 +7,26 @@ export interface ValidationResult {
   error: string | null;
 }
 
+export interface ValidateOptions {
+  modelsUrl?: string;
+  headers?: Record<string, string>;
+}
+
+export function azureValidateOptions(apiKey: string, endpointUrl: string): ValidateOptions {
+  const apiVersion = process.env.AZURE_OPENAI_API_VERSION ?? "2024-12-01-preview";
+  return {
+    modelsUrl: `${endpointUrl.replace(/\/+$/, "")}/openai/models?api-version=${apiVersion}`,
+    headers: { "api-key": apiKey },
+  };
+}
+
 export async function validateApiKey(
   apiKey: string,
   endpointUrl: string,
+  options?: ValidateOptions,
 ): Promise<ValidationResult> {
-  const url = `${endpointUrl.replace(/\/+$/, "")}/models`;
+  const url = options?.modelsUrl ?? `${endpointUrl.replace(/\/+$/, "")}/models`;
+  const headers = options?.headers ?? { Authorization: `Bearer ${apiKey}` };
   const controller = new AbortController();
   const timeout = setTimeout(() => {
     controller.abort();
@@ -19,7 +34,7 @@ export async function validateApiKey(
 
   try {
     const response = await fetch(url, {
-      headers: { Authorization: `Bearer ${apiKey}` },
+      headers,
       signal: controller.signal,
     });
 

@@ -8,6 +8,7 @@ import { nvidiaNcpProvider } from "./nvidia-ncp.js";
 import { nimLocalProvider } from "./nim-local.js";
 import { vllmProvider } from "./vllm.js";
 import { ollamaProvider } from "./ollama.js";
+import { azureOpenAIProvider } from "./azure-openai.js";
 import { createDefaultRegistry } from "./index.js";
 
 describe("ProviderRegistry", () => {
@@ -40,6 +41,7 @@ describe("ProviderRegistry", () => {
     expect(registry.resolve("nim-local")).toBe(nimLocalProvider);
     expect(registry.resolve("vllm")).toBe(vllmProvider);
     expect(registry.resolve("ollama")).toBe(ollamaProvider);
+    expect(registry.resolve("azure")).toBe(azureOpenAIProvider);
   });
 
   it("resolve() throws for unknown endpoint type", () => {
@@ -50,11 +52,12 @@ describe("ProviderRegistry", () => {
   it("list() returns all registered providers without duplicates", () => {
     const registry = createDefaultRegistry();
     const list = registry.list();
-    // 5 unique providers (ncp handles both "ncp" and "custom")
-    expect(list).toHaveLength(5);
+    // 6 unique providers (ncp handles both "ncp" and "custom")
+    expect(list).toHaveLength(6);
     const ids = list.map((p) => p.id);
     expect(ids).toContain("build");
     expect(ids).toContain("ncp");
+    expect(ids).toContain("azure");
     expect(ids).toContain("nim-local");
     expect(ids).toContain("vllm");
     expect(ids).toContain("ollama");

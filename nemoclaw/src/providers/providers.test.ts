@@ -10,9 +10,13 @@ vi.mock("node:child_process", () => ({
 }));
 
 // Mock validate.ts to prevent actual network calls
-vi.mock("../onboard/validate.js", () => ({
-  validateApiKey: vi.fn(),
-}));
+vi.mock("../onboard/validate.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../onboard/validate.js")>();
+  return {
+    ...actual,
+    validateApiKey: vi.fn(),
+  };
+});
 
 const { execSync } = await import("node:child_process");
 const { validateApiKey } = await import("../onboard/validate.js");
@@ -22,6 +26,7 @@ const { nvidiaNcpProvider } = await import("./nvidia-ncp.js");
 const { nimLocalProvider } = await import("./nim-local.js");
 const { vllmProvider } = await import("./vllm.js");
 const { ollamaProvider, parseOllamaList } = await import("./ollama.js");
+const { azureOpenAIProvider } = await import("./azure-openai.js");
 
 beforeEach(() => {
   vi.resetAllMocks();
@@ -265,6 +270,47 @@ describe("ollama provider", () => {
 });
 
 // ---------------------------------------------------------------------------
+// azure-openai
+// ---------------------------------------------------------------------------
+
+describe("azure-openai provider", () => {
+  it("has correct static properties", () => {
+    expect(azureOpenAIProvider.id).toBe("azure");
+    expect(azureOpenAIProvider.providerType).toBe("azure_openai");
+    expect(azureOpenAIProvider.credentialEnvVar).toBe("AZURE_OPENAI_API_KEY");
+    expect(azureOpenAIProvider.defaultEndpoint).toBe("");
+    expect(azureOpenAIProvider.isExperimental).toBe(false);
+    expect(azureOpenAIProvider.isLocal).toBe(false);
+  });
+
+  it("buildModelOptions maps directly", () => {
+    const options = azureOpenAIProvider.buildModelOptions(["gpt-4o", "gpt-4o-mini"]);
+    expect(options).toEqual([
+      { id: "gpt-4o", label: "gpt-4o" },
+      { id: "gpt-4o-mini", label: "gpt-4o-mini" },
+    ]);
+  });
+
+  it("defaultModelId returns first or empty", () => {
+    expect(azureOpenAIProvider.defaultModelId(["gpt-4o"])).toBe("gpt-4o");
+    expect(azureOpenAIProvider.defaultModelId([])).toBe("");
+  });
+
+  it("toProviderPlugin uses api-key auth header", () => {
+    const plugin = azureOpenAIProvider.toProviderPlugin("gpt-4o", "AZURE_OPENAI_API_KEY");
+    expect(plugin.id).toBe("inference");
+    expect(plugin.auth).toHaveLength(1);
+    expect(plugin.auth[0].headerName).toBe("api-key");
+    expect(plugin.auth[0].type).toBe("api-key");
+    expect(plugin.auth[0].envVar).toBe("AZURE_OPENAI_API_KEY");
+  });
+
+  it("describeProvider returns Azure OpenAI", () => {
+    expect(azureOpenAIProvider.describeProvider()).toBe("Azure OpenAI");
+  });
+});
+
+// ---------------------------------------------------------------------------
 // validateCredentials (Gap 2)
 // ---------------------------------------------------------------------------
 
@@ -295,6 +341,19 @@ describe("validateCredentials", () => {
   it("vllm delegates to validateApiKey", async () => {
     vi.mocked(validateApiKey).mockResolvedValue({ valid: false, models: [] });
     expect(await vllmProvider.validateCredentials("dummy", "http://host:8000/v1")).toBe(false);
+  });
+
+  it("azure delegates to validateApiKey with azure options", async () => {
+    vi.mocked(validateApiKey).mockResolvedValue({ valid: true, models: ["gpt-4o"], error: null });
+    const result = await azureOpenAIProvider.validateCredentials("key", "https://my-resource.openai.azure.com");
+    expect(result).toBe(true);
+    expect(validateApiKey).toHaveBeenCalledWith(
+      "key",
+      "https://my-resource.openai.azure.com",
+      expect.objectContaining({
+        headers: { "api-key": "key" },
+      }),
+    );
   });
 
   it("ollama returns true when ollama is running", async () => {
@@ -356,6 +415,14 @@ describe("toBlueprintProfile", () => {
     expect(profile.provider_name).toBe("ollama-local");
   });
 
+  it("azure returns dynamic_endpoint with openai provider_type", () => {
+    const profile = azureOpenAIProvider.toBlueprintProfile("gpt-4o", "AZURE_OPENAI_API_KEY");
+    expect(profile.dynamic_endpoint).toBe(true);
+    expect(profile.provider_type).toBe("openai");
+    expect(profile.endpoint).toBe("");
+    expect(profile.credential_env).toBe("AZURE_OPENAI_API_KEY");
+  });
+
   it("all profiles conform to InferenceProfileConfig shape", () => {
     const providers = [
       { p: nvidiaBuildProvider, model: "m", env: "E" },
@@ -363,6 +430,7 @@ describe("toBlueprintProfile", () => {
       { p: nimLocalProvider, model: "m", env: "E" },
       { p: vllmProvider, model: "m", env: "E" },
       { p: ollamaProvider, model: "m", env: "E" },
+      { p: azureOpenAIProvider, model: "m", env: "E" },
     ];
     for (const { p, model, env } of providers) {
       const profile = p.toBlueprintProfile(model, env);

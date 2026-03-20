@@ -12,7 +12,7 @@ import {
   type NemoClawOnboardConfig,
 } from "../onboard/config.js";
 import { promptInput, promptConfirm, promptSelect } from "../onboard/prompt.js";
-import { validateApiKey, maskApiKey } from "../onboard/validate.js";
+import { validateApiKey, azureValidateOptions, maskApiKey } from "../onboard/validate.js";
 import {
   createDefaultRegistry,
   detectOllama,
@@ -159,6 +159,8 @@ export async function cliOnboard(opts: OnboardOptions): Promise<void> {
       } else {
         if (credentialEnv === "NVIDIA_API_KEY") {
           logger.info("Get an API key from: https://build.nvidia.com/settings/api-keys");
+        } else if (credentialEnv === "AZURE_OPENAI_API_KEY") {
+          logger.info("Get an API key from the Azure Portal under your OpenAI resource → Keys and Endpoint");
         }
         apiKey = await promptInput("Enter your API key");
       }
@@ -178,7 +180,9 @@ export async function cliOnboard(opts: OnboardOptions): Promise<void> {
   // For local providers, validation is best-effort since the service may not be running yet.
   logger.info("");
   logger.info(`Validating ${provider.requiresApiKey ? "credential" : "endpoint"} against ${endpointUrl}...`);
-  const validation = await validateApiKey(apiKey, endpointUrl);
+  const validateOpts = provider.providerType === "azure_openai"
+    ? azureValidateOptions(apiKey, endpointUrl) : undefined;
+  const validation = await validateApiKey(apiKey, endpointUrl, validateOpts);
 
   if (!validation.valid) {
     if (provider.isLocal) {
@@ -187,7 +191,11 @@ export async function cliOnboard(opts: OnboardOptions): Promise<void> {
       );
     } else {
       logger.error(`API key validation failed: ${validation.error ?? "unknown error"}`);
-      logger.info("Check your key at https://build.nvidia.com/settings/api-keys");
+      if (credentialEnv === "AZURE_OPENAI_API_KEY") {
+        logger.info("Check your key and endpoint in the Azure Portal under your OpenAI resource → Keys and Endpoint");
+      } else {
+        logger.info("Check your key at https://build.nvidia.com/settings/api-keys");
+      }
       return;
     }
   } else {

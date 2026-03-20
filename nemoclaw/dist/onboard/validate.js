@@ -2,17 +2,26 @@
 // SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 Object.defineProperty(exports, "__esModule", { value: true });
+exports.azureValidateOptions = azureValidateOptions;
 exports.validateApiKey = validateApiKey;
 exports.maskApiKey = maskApiKey;
-async function validateApiKey(apiKey, endpointUrl) {
-    const url = `${endpointUrl.replace(/\/+$/, "")}/models`;
+function azureValidateOptions(apiKey, endpointUrl) {
+    const apiVersion = process.env.AZURE_OPENAI_API_VERSION ?? "2024-12-01-preview";
+    return {
+        modelsUrl: `${endpointUrl.replace(/\/+$/, "")}/openai/models?api-version=${apiVersion}`,
+        headers: { "api-key": apiKey },
+    };
+}
+async function validateApiKey(apiKey, endpointUrl, options) {
+    const url = options?.modelsUrl ?? `${endpointUrl.replace(/\/+$/, "")}/models`;
+    const headers = options?.headers ?? { Authorization: `Bearer ${apiKey}` };
     const controller = new AbortController();
     const timeout = setTimeout(() => {
         controller.abort();
     }, 10_000);
     try {
         const response = await fetch(url, {
-            headers: { Authorization: `Bearer ${apiKey}` },
+            headers,
             signal: controller.signal,
         });
         if (!response.ok) {
