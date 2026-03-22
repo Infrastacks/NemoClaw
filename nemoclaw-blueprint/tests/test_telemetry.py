@@ -6,6 +6,15 @@
 import json
 
 from orchestrator.telemetry import (
+    INFERENCE_CONFIGURED,
+    INFERENCE_ERROR,
+    INFERENCE_REQUEST,
+    INFERENCE_RESPONSE,
+    NETWORK_APPROVED,
+    NETWORK_DENIED,
+    POLICY_APPLIED,
+    POLICY_DENIED,
+    POLICY_EVALUATED,
     RUN_ID,
     SANDBOX_PLANNED,
     SANDBOX_PROGRESS,
@@ -144,3 +153,61 @@ def test_file_sink_appends_jsonl(tmp_path):
     assert len(lines) == 2
     parsed = json.loads(lines[0])
     assert parsed["eventType"] == SANDBOX_PLANNED
+
+
+# --- New event constants ---
+
+
+def test_inference_event_constants_are_strings():
+    assert INFERENCE_CONFIGURED == "inference.configured"
+    assert INFERENCE_REQUEST == "inference.request"
+    assert INFERENCE_RESPONSE == "inference.response"
+    assert INFERENCE_ERROR == "inference.error"
+
+
+def test_policy_event_constants_are_strings():
+    assert POLICY_APPLIED == "policy.applied"
+    assert POLICY_EVALUATED == "policy.evaluated"
+    assert POLICY_DENIED == "policy.denied"
+
+
+def test_network_event_constants_are_strings():
+    assert NETWORK_APPROVED == "network.approved"
+    assert NETWORK_DENIED == "network.denied"
+
+
+def test_emitter_emits_inference_configured_event():
+    sink = MockSink()
+    emitter = TelemetryEmitter(sinks=[sink])
+
+    emitter.emit(
+        INFERENCE_CONFIGURED,
+        {
+            "source": "inference",
+            "provider": "local-nim",
+            "model": "llama-3.1-8b",
+            "endpoint": "http://localhost:8000/v1",
+        },
+    )
+
+    assert len(sink.events) == 1
+    assert sink.events[0]["eventType"] == INFERENCE_CONFIGURED
+    assert sink.events[0]["data"]["source"] == "inference"
+    assert sink.events[0]["data"]["provider"] == "local-nim"
+
+
+def test_emitter_emits_policy_applied_event():
+    sink = MockSink()
+    emitter = TelemetryEmitter(sinks=[sink])
+
+    emitter.emit(
+        POLICY_APPLIED,
+        {
+            "source": "policy",
+            "policies": ["nim_service"],
+        },
+    )
+
+    assert len(sink.events) == 1
+    assert sink.events[0]["eventType"] == POLICY_APPLIED
+    assert sink.events[0]["data"]["policies"] == ["nim_service"]

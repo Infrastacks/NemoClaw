@@ -164,9 +164,10 @@ def test_apply_raises_when_inference_set_fails(monkeypatch, tmp_path):
     """Apply fails closed when setting the inference route fails."""
     responses = iter(
         [
-            type("R", (), {"returncode": 0, "stderr": ""})(),
-            type("R", (), {"returncode": 0, "stderr": ""})(),
-            type("R", (), {"returncode": 1, "stderr": "inference set failed"})(),
+            type("R", (), {"returncode": 0, "stderr": ""})(),  # sandbox create
+            type("R", (), {"returncode": 0, "stderr": ""})(),  # provider create
+            type("R", (), {"returncode": 0, "stderr": ""})(),  # policy set
+            type("R", (), {"returncode": 1, "stderr": "inference set failed"})(),  # inference set
         ]
     )
     monkeypatch.setattr("orchestrator.core.Path.home", lambda: tmp_path)
@@ -335,11 +336,120 @@ def test_describe_blueprint(monkeypatch):
 
 def test_get_blueprint_current_alias(monkeypatch):
     """get_blueprint accepts the current alias."""
-    monkeypatch.setattr("orchestrator.core.describe_blueprint", lambda path=None: {"version": "0.2.0"})
+
+    def fake_describe(path=None):
+        return {"version": "0.2.0"}
+
+    monkeypatch.setattr("orchestrator.core.describe_blueprint", fake_describe)
     assert get_blueprint("current") == {"version": "0.2.0"}
 
 
 def test_get_blueprint_specific_version(monkeypatch):
     """get_blueprint accepts the currently loaded version."""
-    monkeypatch.setattr("orchestrator.core.describe_blueprint", lambda path=None: {"version": "0.2.0"})
+
+    def fake_describe(path=None):
+        return {"version": "0.2.0"}
+
+    monkeypatch.setattr("orchestrator.core.describe_blueprint", fake_describe)
     assert get_blueprint("0.2.0") == {"version": "0.2.0"}
+
+
+# --- apply: inference return ---
+
+
+def test_apply_returns_inference_config(monkeypatch, tmp_path):
+    """apply() returns inference metadata in the result dict."""
+    monkeypatch.setattr(
+        "orchestrator.core.run_cmd",
+        lambda *a, **kw: type("R", (), {"returncode": 0, "stderr": ""})(),
+    )
+    monkeypatch.setattr("orchestrator.core.Path.home", lambda: tmp_path)
+
+    from orchestrator.core import apply
+
+    result = apply("local", VALID_BLUEPRINT)
+
+    assert "inference" in result
+    assert result["inference"]["provider_name"] == "local-nim"
+    assert result["inference"]["provider_type"] == "openai"
+    assert result["inference"]["model"] == "meta/llama-3.1-8b"
+    assert result["inference"]["endpoint"] == "http://localhost:8000/v1"
+
+
+# --- apply: policy application ---
+
+
+def test_apply_applies_policies_on_success(monkeypatch, tmp_path):
+    """apply() calls openshell policy set and returns applied policy names."""
+    monkeypatch.setattr(
+        "orchestrator.core.run_cmd",
+        lambda *a, **kw: type("R", (), {"returncode": 0, "stderr": ""})(),
+    )
+    monkeypatch.setattr("orchestrator.core.Path.home", lambda: tmp_path)
+
+    from orchestrator.core import apply
+
+    result = apply("local", VALID_BLUEPRINT)
+
+    assert "policies_applied" in result
+    assert result["policies_applied"] == ["nim_service"]
+
+
+def test_apply_policy_failure_is_nonfatal(monkeypatch, tmp_path):
+    """Policy set failure doesn't break apply — the policy is just not listed."""
+    call_count = 0
+
+    def mock_run_cmd(*a, **kw):
+        nonlocal call_count
+        call_count += 1
+        args = a[0] if a else kw.get("args", [])
+        # Fail on policy set (4th call: sandbox create, provider create, policy set, inference set)
+        if "policy" in args and "set" in args:
+            return type("R", (), {"returncode": 1, "stderr": "not supported"})()
+        return type("R", (), {"returncode": 0, "stderr": ""})()
+
+    monkeypatch.setattr("orchestrator.core.run_cmd", mock_run_cmd)
+    monkeypatch.setattr("orchestrator.core.Path.home", lambda: tmp_path)
+
+    from orchestrator.core import apply
+
+    result = apply("local", VALID_BLUEPRINT)
+
+    assert result["policies_applied"] == []
+    assert "ready" in result["message"]
+
+
+def test_apply_no_policy_additions(monkeypatch, tmp_path):
+    """apply() handles blueprints with no policy additions gracefully."""
+    monkeypatch.setattr(
+        "orchestrator.core.run_cmd",
+        lambda *a, **kw: type("R", (), {"returncode": 0, "stderr": ""})(),
+    )
+    monkeypatch.setattr("orchestrator.core.Path.home", lambda: tmp_path)
+
+    no_policy_bp = {
+        "components": {
+            "inference": {
+                "profiles": {
+                    "local": {
+                        "provider_type": "openai",
+                        "provider_name": "local-nim",
+                        "endpoint": "http://localhost:8000/v1",
+                        "model": "meta/llama-3.1-8b",
+                        "credential_env": "NIM_API_KEY",
+                    },
+                },
+            },
+            "sandbox": {
+                "image": "openclaw:latest",
+                "name": "test-sandbox",
+                "forward_ports": [18789],
+            },
+        },
+    }
+
+    from orchestrator.core import apply
+
+    result = apply("local", no_policy_bp)
+
+    assert result["policies_applied"] == []

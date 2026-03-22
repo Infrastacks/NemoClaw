@@ -18,6 +18,8 @@ import {
   detectOllama,
   type InferenceProvider,
 } from "../providers/index.js";
+import { TelemetryEmitter, FileSink, INFERENCE_CONFIGURED } from "../telemetry/index.js";
+import { withInferenceTelemetry } from "../telemetry/inference.js";
 
 export interface OnboardOptions {
   apiKey?: string;
@@ -79,6 +81,7 @@ function appendProviderArgs(
 
 export async function cliOnboard(opts: OnboardOptions): Promise<void> {
   const { logger } = opts;
+  const emitter = new TelemetryEmitter({ sinks: [new FileSink()] });
   const registry = createDefaultRegistry();
 
   // Resolve provider early for nonInteractive check
@@ -194,10 +197,19 @@ export async function cliOnboard(opts: OnboardOptions): Promise<void> {
   // For local providers, validation is best-effort since the service may not be running yet.
   logger.info("");
   logger.info(`Validating ${provider.requiresApiKey ? "credential" : "endpoint"} against ${endpointUrl}...`);
-  const validationValid = await provider.validateCredentials(apiKey, endpointUrl);
+  const telemetryCtx = { provider: provider.id, model: "", endpoint: endpointUrl, operation: "" };
+  const validationValid = await withInferenceTelemetry(
+    emitter,
+    { ...telemetryCtx, operation: "validateCredentials" },
+    () => provider.validateCredentials(apiKey, endpointUrl),
+  );
   const validationModels =
     validationValid || provider.id === "ollama"
-      ? await provider.discoverModels(apiKey, endpointUrl)
+      ? await withInferenceTelemetry(
+          emitter,
+          { ...telemetryCtx, operation: "discoverModels" },
+          () => provider.discoverModels(apiKey, endpointUrl),
+        )
       : [];
 
   if (!validationValid) {
@@ -339,6 +351,13 @@ export async function cliOnboard(opts: OnboardOptions): Promise<void> {
     logger.error(`Failed to set inference route: ${stderr || String(err)}`);
     return;
   }
+
+  emitter.emit(INFERENCE_CONFIGURED, {
+    source: "inference",
+    provider: providerName,
+    model,
+    endpoint: endpointUrl,
+  });
 
   // 8c: Save config
   saveOnboardConfig({

@@ -27,6 +27,8 @@ from orchestrator.models import (
     RunStatusResponse,
 )
 from orchestrator.telemetry import (
+    INFERENCE_CONFIGURED,
+    POLICY_APPLIED,
     SANDBOX_CREATED,
     SANDBOX_DESTROYED,
     SANDBOX_ERROR,
@@ -150,6 +152,27 @@ def blueprint_apply(req: ApplyRequest) -> ApplyResponse:
         emitter.emit(
             SANDBOX_CREATED, {"sandboxName": result["sandbox_name"], "runId": result["run_id"]}
         )
+        inf = result.get("inference", {})
+        emitter.emit(
+            INFERENCE_CONFIGURED,
+            {
+                "source": "inference",
+                "provider": inf.get("provider_name", ""),
+                "providerType": inf.get("provider_type", ""),
+                "model": inf.get("model", ""),
+                "endpoint": inf.get("endpoint", ""),
+                "runId": result["run_id"],
+            },
+        )
+        if result.get("policies_applied"):
+            emitter.emit(
+                POLICY_APPLIED,
+                {
+                    "source": "policy",
+                    "policies": result["policies_applied"],
+                    "runId": result["run_id"],
+                },
+            )
         return ApplyResponse(**result)
     except core.RunnerError as exc:
         emitter.emit(SANDBOX_ERROR, {"error": exc.message})

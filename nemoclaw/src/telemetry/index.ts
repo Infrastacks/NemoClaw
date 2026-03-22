@@ -14,11 +14,18 @@ export {
   SANDBOX_DESTROYED,
   SANDBOX_ERROR,
   RUN_ID,
+  INFERENCE_CONFIGURED,
   INFERENCE_REQUEST,
   INFERENCE_RESPONSE,
+  INFERENCE_ERROR,
+  POLICY_APPLIED,
   POLICY_EVALUATED,
   POLICY_DENIED,
+  NETWORK_APPROVED,
+  NETWORK_DENIED,
   NETWORK_CONNECTED,
   NETWORK_DISCONNECTED,
   AGENT_HEARTBEAT,
 } from "./types.js";
+export { withInferenceTelemetry } from "./inference.js";
+export { parseProxyLogLine, type PolicyDecision } from "./proxy-parser.js";

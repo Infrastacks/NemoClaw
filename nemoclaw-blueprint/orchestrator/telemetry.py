@@ -20,7 +20,7 @@ from typing import Any, Protocol
 # Event-type constants
 # ---------------------------------------------------------------------------
 
-# Emitted today
+# Sandbox lifecycle
 SANDBOX_PROGRESS = "sandbox.progress"
 SANDBOX_PLANNED = "sandbox.planned"
 SANDBOX_CREATED = "sandbox.created"
@@ -28,13 +28,24 @@ SANDBOX_DESTROYED = "sandbox.destroyed"
 SANDBOX_ERROR = "sandbox.error"
 RUN_ID = "run.id"
 
-# Forward-compat — defined but not emitted yet
+# Inference lifecycle
+INFERENCE_CONFIGURED = "inference.configured"
 INFERENCE_REQUEST = "inference.request"
 INFERENCE_RESPONSE = "inference.response"
+INFERENCE_ERROR = "inference.error"
+
+# Policy lifecycle
+POLICY_APPLIED = "policy.applied"
 POLICY_EVALUATED = "policy.evaluated"
 POLICY_DENIED = "policy.denied"
+
+# Network lifecycle
+NETWORK_APPROVED = "network.approved"
+NETWORK_DENIED = "network.denied"
 NETWORK_CONNECTED = "network.connected"
 NETWORK_DISCONNECTED = "network.disconnected"
+
+# Agent lifecycle
 AGENT_HEARTBEAT = "agent.heartbeat"
 
 SCHEMA_VERSION = "1.0"

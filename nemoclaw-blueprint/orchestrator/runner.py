@@ -23,6 +23,8 @@ import sys
 
 from orchestrator import core
 from orchestrator.telemetry import (
+    INFERENCE_CONFIGURED,
+    POLICY_APPLIED,
     RUN_ID,
     SANDBOX_CREATED,
     SANDBOX_DESTROYED,
@@ -105,6 +107,27 @@ def action_apply(
         rid = result["run_id"]
         emitter.emit(RUN_ID, {"runId": rid})
         emitter.emit(SANDBOX_CREATED, {"sandboxName": result["sandbox_name"], "runId": rid})
+        inf = result.get("inference", {})
+        emitter.emit(
+            INFERENCE_CONFIGURED,
+            {
+                "source": "inference",
+                "provider": inf.get("provider_name", ""),
+                "providerType": inf.get("provider_type", ""),
+                "model": inf.get("model", ""),
+                "endpoint": inf.get("endpoint", ""),
+                "runId": rid,
+            },
+        )
+        if result.get("policies_applied"):
+            emitter.emit(
+                POLICY_APPLIED,
+                {
+                    "source": "policy",
+                    "policies": result["policies_applied"],
+                    "runId": rid,
+                },
+            )
         log(result["message"])
     except core.RunnerError as e:
         if rid:

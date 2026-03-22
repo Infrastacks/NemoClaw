@@ -331,6 +331,33 @@ def apply(
                 f"Failed to create provider: {provider_result.stderr}",
             )
 
+    # Step 2.5: Apply policy additions (non-fatal — OpenShell may not support this yet)
+    if on_progress:
+        on_progress(55, "Applying policy additions")
+
+    policy_additions: dict[str, Any] = (
+        saved.get("policy_additions", {})
+        if plan_path
+        else blueprint.get("components", {}).get("policy", {}).get("additions", {})
+    )
+    applied_policies: list[str] = []
+    for policy_name, policy_cfg in policy_additions.items():
+        policy_result = run_cmd(
+            [
+                "openshell",
+                "policy",
+                "set",
+                "--name",
+                policy_name,
+                "--config",
+                json.dumps(policy_cfg),
+            ],
+            check=False,
+            capture=True,
+        )
+        if policy_result.returncode == 0:
+            applied_policies.append(policy_name)
+
     # Step 3: Set inference route
     if on_progress:
         on_progress(70, "Setting inference route")
@@ -371,6 +398,13 @@ def apply(
     return {
         "run_id": rid,
         "sandbox_name": sandbox_name,
+        "inference": {
+            "provider_name": provider_name,
+            "provider_type": provider_type,
+            "model": model,
+            "endpoint": endpoint,
+        },
+        "policies_applied": applied_policies,
         "message": f"Sandbox '{sandbox_name}' is ready. "
         f"Inference: {provider_name} -> {model} @ {endpoint}",
     }

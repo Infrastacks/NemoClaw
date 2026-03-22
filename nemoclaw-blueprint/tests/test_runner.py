@@ -8,7 +8,7 @@ import re
 
 import pytest
 
-from orchestrator.runner import action_plan
+from orchestrator.runner import action_apply, action_plan
 
 # --- Valid blueprint fixture ---
 
@@ -152,3 +152,71 @@ def test_action_plan_still_emits_legacy_lines(monkeypatch, capsys):
 
     assert f"RUN_ID:{result['run_id']}" in captured.out
     assert "PROGRESS:" in captured.out
+
+
+# --- Apply telemetry emission tests ---
+
+APPLY_BLUEPRINT = {
+    "components": {
+        "inference": {
+            "profiles": {
+                "local": {
+                    "provider_type": "openai",
+                    "provider_name": "local-nim",
+                    "endpoint": "http://localhost:8000/v1",
+                    "model": "meta/llama-3.1-8b",
+                    "credential_env": "NIM_API_KEY",
+                },
+            },
+        },
+        "sandbox": {
+            "image": "openclaw:latest",
+            "name": "test-sandbox",
+            "forward_ports": [18789],
+        },
+        "policy": {
+            "additions": {"nim_service": {"host": "nim-service.local"}},
+        },
+    },
+}
+
+
+def test_action_apply_emits_inference_configured(monkeypatch, capsys, tmp_path):
+    """action_apply emits inference.configured event."""
+    monkeypatch.setattr(
+        "orchestrator.core.run_cmd",
+        lambda *a, **kw: type("R", (), {"returncode": 0, "stderr": ""})(),
+    )
+    monkeypatch.setattr("orchestrator.core.Path.home", lambda: tmp_path)
+
+    action_apply("local", APPLY_BLUEPRINT)
+    captured = capsys.readouterr()
+    events = _parse_json_lines(captured.out)
+
+    event_types = [e["eventType"] for e in events if "eventType" in e]
+    assert "inference.configured" in event_types
+
+    inf_event = next(e for e in events if e.get("eventType") == "inference.configured")
+    assert inf_event["data"]["source"] == "inference"
+    assert inf_event["data"]["provider"] == "local-nim"
+    assert inf_event["data"]["model"] == "meta/llama-3.1-8b"
+
+
+def test_action_apply_emits_policy_applied(monkeypatch, capsys, tmp_path):
+    """action_apply emits policy.applied when policies are applied."""
+    monkeypatch.setattr(
+        "orchestrator.core.run_cmd",
+        lambda *a, **kw: type("R", (), {"returncode": 0, "stderr": ""})(),
+    )
+    monkeypatch.setattr("orchestrator.core.Path.home", lambda: tmp_path)
+
+    action_apply("local", APPLY_BLUEPRINT)
+    captured = capsys.readouterr()
+    events = _parse_json_lines(captured.out)
+
+    event_types = [e["eventType"] for e in events if "eventType" in e]
+    assert "policy.applied" in event_types
+
+    pol_event = next(e for e in events if e.get("eventType") == "policy.applied")
+    assert pol_event["data"]["source"] == "policy"
+    assert pol_event["data"]["policies"] == ["nim_service"]
