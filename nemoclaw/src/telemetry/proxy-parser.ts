@@ -8,6 +8,14 @@
  * [2026-03-22T10:30:00Z] POLICY decision=allow policy=nim_service dest=nim-service.local:443 method=GET path=/v1/models
  */
 
+import type { TelemetryEmitter } from "./emitter.js";
+import {
+  NETWORK_APPROVED,
+  NETWORK_DENIED,
+  POLICY_DENIED,
+  POLICY_EVALUATED,
+} from "./types.js";
+
 export interface PolicyDecision {
   decision: "allow" | "deny";
   policy: string;
@@ -41,4 +49,37 @@ export function parseProxyLogLine(line: string): PolicyDecision | null {
     method: kvs.method ?? "",
     path: kvs.path ?? "",
   };
+}
+
+/**
+ * Parse a proxy log line and emit the corresponding policy + network telemetry events.
+ * Returns the parsed decision (or null if the line was not a policy line).
+ */
+export function emitProxyLineEvents(
+  emitter: TelemetryEmitter,
+  line: string,
+): PolicyDecision | null {
+  const parsed = parseProxyLogLine(line);
+  if (!parsed) return null;
+
+  const data: Record<string, unknown> = {
+    source: "openshell",
+    policy: parsed.policy,
+    rule_id: parsed.policy,
+    dest: parsed.dest,
+    method: parsed.method,
+    path: parsed.path,
+    timestamp: parsed.timestamp,
+  };
+
+  if (parsed.decision === "allow") {
+    emitter.emit(POLICY_EVALUATED, data);
+    emitter.emit(NETWORK_APPROVED, data);
+  } else {
+    const denyData = { ...data, reason: `Policy denied by ${parsed.policy}` };
+    emitter.emit(POLICY_DENIED, denyData);
+    emitter.emit(NETWORK_DENIED, denyData);
+  }
+
+  return parsed;
 }

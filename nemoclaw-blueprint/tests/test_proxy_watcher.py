@@ -6,7 +6,13 @@
 import io
 
 from orchestrator.proxy_watcher import ProxyLogParser, ProxyLogWatcher
-from orchestrator.telemetry import POLICY_DENIED, POLICY_EVALUATED, TelemetryEmitter
+from orchestrator.telemetry import (
+    NETWORK_APPROVED,
+    NETWORK_DENIED,
+    POLICY_DENIED,
+    POLICY_EVALUATED,
+    TelemetryEmitter,
+)
 
 
 class MockSink:
@@ -64,7 +70,7 @@ def test_parser_returns_none_for_invalid_decision():
 # --- ProxyLogWatcher ---
 
 
-def test_watcher_emits_policy_evaluated_on_allow():
+def test_watcher_emits_policy_evaluated_and_network_approved_on_allow():
     sink = MockSink()
     emitter = TelemetryEmitter(sinks=[sink])
     watcher = ProxyLogWatcher(emitter)
@@ -74,13 +80,17 @@ def test_watcher_emits_policy_evaluated_on_allow():
         "dest=nim.local:443 method=GET path=/v1/models"
     )
 
-    assert len(sink.events) == 1
+    assert len(sink.events) == 2
     assert sink.events[0]["eventType"] == POLICY_EVALUATED
     assert sink.events[0]["data"]["policy"] == "nim"
-    assert sink.events[0]["data"]["source"] == "policy"
+    assert sink.events[0]["data"]["rule_id"] == "nim"
+    assert sink.events[0]["data"]["source"] == "openshell"
+    assert sink.events[1]["eventType"] == NETWORK_APPROVED
+    assert sink.events[1]["data"]["policy"] == "nim"
+    assert sink.events[1]["data"]["source"] == "openshell"
 
 
-def test_watcher_emits_policy_denied_on_deny():
+def test_watcher_emits_policy_denied_and_network_denied_on_deny():
     sink = MockSink()
     emitter = TelemetryEmitter(sinks=[sink])
     watcher = ProxyLogWatcher(emitter)
@@ -90,9 +100,13 @@ def test_watcher_emits_policy_denied_on_deny():
         "dest=evil.com:80 method=POST path=/exfil"
     )
 
-    assert len(sink.events) == 1
+    assert len(sink.events) == 2
     assert sink.events[0]["eventType"] == POLICY_DENIED
     assert sink.events[0]["data"]["policy"] == "egress"
+    assert sink.events[0]["data"]["rule_id"] == "egress"
+    assert sink.events[0]["data"]["reason"] == "Policy denied by egress"
+    assert sink.events[1]["eventType"] == NETWORK_DENIED
+    assert sink.events[1]["data"]["reason"] == "Policy denied by egress"
 
 
 def test_watcher_ignores_non_policy_lines():
@@ -118,6 +132,8 @@ def test_watcher_process_stream():
     )
     watcher.process_stream(lines)
 
-    assert len(sink.events) == 2
+    assert len(sink.events) == 4
     assert sink.events[0]["eventType"] == POLICY_EVALUATED
-    assert sink.events[1]["eventType"] == POLICY_DENIED
+    assert sink.events[1]["eventType"] == NETWORK_APPROVED
+    assert sink.events[2]["eventType"] == POLICY_DENIED
+    assert sink.events[3]["eventType"] == NETWORK_DENIED

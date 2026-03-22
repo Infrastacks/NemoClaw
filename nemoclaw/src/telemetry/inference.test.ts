@@ -63,6 +63,37 @@ describe("withInferenceTelemetry", () => {
     expect(sink.events[1]!.data.errorCode).toBe("ECONNREFUSED");
   });
 
+  it("includes token counts and cost when returned by the wrapped function", async () => {
+    const sink = new MockSink();
+    const emitter = new TelemetryEmitter({ sinks: [sink] });
+
+    const result = await withInferenceTelemetry(emitter, ctx, async () => ({
+      answer: "hello",
+      input_tokens: 100,
+      output_tokens: 50,
+      cost_usd: 0.003,
+    }));
+
+    expect(result.answer).toBe("hello");
+    const responseEvent = sink.events[1]!;
+    expect(responseEvent.eventType).toBe(INFERENCE_RESPONSE);
+    expect(responseEvent.data.input_tokens).toBe(100);
+    expect(responseEvent.data.output_tokens).toBe(50);
+    expect(responseEvent.data.cost_usd).toBe(0.003);
+  });
+
+  it("omits token fields when result does not contain them", async () => {
+    const sink = new MockSink();
+    const emitter = new TelemetryEmitter({ sinks: [sink] });
+
+    await withInferenceTelemetry(emitter, ctx, async () => "plain string");
+
+    const responseEvent = sink.events[1]!;
+    expect(responseEvent.data.input_tokens).toBeUndefined();
+    expect(responseEvent.data.output_tokens).toBeUndefined();
+    expect(responseEvent.data.cost_usd).toBeUndefined();
+  });
+
   it("never leaks API key into telemetry data", async () => {
     const sink = new MockSink();
     const emitter = new TelemetryEmitter({ sinks: [sink] });

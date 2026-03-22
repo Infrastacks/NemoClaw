@@ -28,4 +28,4 @@ export {
   AGENT_HEARTBEAT,
 } from "./types.js";
 export { withInferenceTelemetry } from "./inference.js";
-export { parseProxyLogLine, type PolicyDecision } from "./proxy-parser.js";
+export { emitProxyLineEvents, parseProxyLogLine, type PolicyDecision } from "./proxy-parser.js";

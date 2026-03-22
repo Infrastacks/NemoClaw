@@ -453,3 +453,41 @@ def test_apply_no_policy_additions(monkeypatch, tmp_path):
     result = apply("local", no_policy_bp)
 
     assert result["policies_applied"] == []
+
+
+# --- apply: proxy log watcher integration ---
+
+
+def test_apply_starts_proxy_watcher_when_log_exists(monkeypatch, tmp_path):
+    """apply() starts and stops ProxyLogWatcher when proxy log file exists."""
+    monkeypatch.setattr(
+        "orchestrator.core.run_cmd",
+        lambda *a, **kw: type("R", (), {"returncode": 0, "stderr": ""})(),
+    )
+    monkeypatch.setattr("orchestrator.core.Path.home", lambda: tmp_path)
+
+    # Create a proxy log file so the watcher branch is entered
+    proxy_log = tmp_path / ".nemoclaw" / "proxy.log"
+    proxy_log.parent.mkdir(parents=True, exist_ok=True)
+    proxy_log.write_text("")
+
+    from orchestrator.core import apply
+
+    result = apply("local", VALID_BLUEPRINT)
+
+    assert "ready" in result["message"]
+
+
+def test_apply_skips_proxy_watcher_when_log_missing(monkeypatch, tmp_path):
+    """apply() gracefully skips watcher when proxy log does not exist."""
+    monkeypatch.setattr(
+        "orchestrator.core.run_cmd",
+        lambda *a, **kw: type("R", (), {"returncode": 0, "stderr": ""})(),
+    )
+    monkeypatch.setattr("orchestrator.core.Path.home", lambda: tmp_path)
+
+    from orchestrator.core import apply
+
+    result = apply("local", VALID_BLUEPRINT)
+
+    assert "ready" in result["message"]

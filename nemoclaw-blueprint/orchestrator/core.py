@@ -12,9 +12,11 @@ or the API layer (server.py).
 from __future__ import annotations
 
 import json
+import logging
 import os
 import shutil
 import subprocess
+import threading
 import uuid
 from collections.abc import Callable
 from datetime import UTC, datetime
@@ -22,6 +24,13 @@ from pathlib import Path
 from typing import Any
 
 import yaml
+
+from orchestrator.proxy_watcher import ProxyLogParser, ProxyLogWatcher
+from orchestrator.telemetry import TelemetryEmitter
+
+logger = logging.getLogger(__name__)
+
+_DEFAULT_PROXY_LOG = Path.home() / ".nemoclaw" / "proxy.log"
 
 
 class RunnerError(Exception):
@@ -274,6 +283,56 @@ def apply(
                 f"Failed to create sandbox: {result.stderr}",
             )
 
+    # Start proxy log watcher in the background (non-fatal if log doesn't exist)
+    proxy_log_path = Path.home() / ".nemoclaw" / "proxy.log"
+    watcher: ProxyLogWatcher | None = None
+    watcher_thread: threading.Thread | None = None
+    if proxy_log_path.exists():
+        try:
+            emitter = TelemetryEmitter(sandbox_id=sandbox_name)
+            watcher = ProxyLogWatcher(emitter)
+            watcher_thread = threading.Thread(
+                target=watcher.tail_file,
+                args=(proxy_log_path,),
+                daemon=True,
+            )
+            watcher_thread.start()
+        except Exception:
+            logger.debug("Failed to start proxy log watcher", exc_info=True)
+            watcher = None
+            watcher_thread = None
+
+    try:
+        return _apply_inner(
+            rid=rid,
+            resolved_profile=resolved_profile,
+            sandbox_name=sandbox_name,
+            inference_cfg=inference_cfg,
+            policy_additions=(
+                saved.get("policy_additions", {})
+                if plan_path
+                else blueprint.get("components", {}).get("policy", {}).get("additions", {})
+            ),
+            on_progress=on_progress,
+        )
+    finally:
+        if watcher is not None:
+            watcher.stop()
+        if watcher_thread is not None:
+            watcher_thread.join(timeout=2.0)
+
+
+def _apply_inner(
+    *,
+    rid: str,
+    resolved_profile: str,
+    sandbox_name: str,
+    inference_cfg: dict[str, Any],
+    policy_additions: dict[str, Any],
+    on_progress: ProgressCallback = None,
+) -> dict[str, Any]:
+    """Inner apply logic, separated so the watcher lifecycle wraps it cleanly."""
+
     # Step 2: Configure inference provider
     if on_progress:
         on_progress(50, "Configuring inference provider")
@@ -335,11 +394,6 @@ def apply(
     if on_progress:
         on_progress(55, "Applying policy additions")
 
-    policy_additions: dict[str, Any] = (
-        saved.get("policy_additions", {})
-        if plan_path
-        else blueprint.get("components", {}).get("policy", {}).get("additions", {})
-    )
     applied_policies: list[str] = []
     for policy_name, policy_cfg in policy_additions.items():
         policy_result = run_cmd(

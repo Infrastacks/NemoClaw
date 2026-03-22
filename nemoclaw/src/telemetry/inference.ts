@@ -14,6 +14,12 @@ export interface InferenceTelemetryContext {
 /**
  * Wraps an async inference call with request/response/error telemetry events.
  * The API key never enters telemetry data — it stays in the closure of {@link fn}.
+ *
+ * NOTE: This wrapper only covers onboarding/validation inference calls made by
+ * the NemoClaw CLI (e.g., credential validation, model availability checks).
+ * Runtime inference during sandbox execution happens inside the OpenShell
+ * subprocess and is NOT captured here — that telemetry is collected by the
+ * Codicera agent sidecar running alongside the sandbox.
  */
 export async function withInferenceTelemetry<T>(
   emitter: TelemetryEmitter,
@@ -25,7 +31,7 @@ export async function withInferenceTelemetry<T>(
   const start = Date.now();
   try {
     const result = await fn();
-    emitter.emit(INFERENCE_RESPONSE, {
+    const responseData: Record<string, unknown> = {
       source: "inference",
       provider,
       model,
@@ -33,7 +39,15 @@ export async function withInferenceTelemetry<T>(
       operation,
       latencyMs: Date.now() - start,
       success: true,
-    });
+    };
+    // Pass through token/cost metrics if the wrapped function returns them
+    if (result != null && typeof result === "object") {
+      const r = result as Record<string, unknown>;
+      if (typeof r.input_tokens === "number") responseData.input_tokens = r.input_tokens;
+      if (typeof r.output_tokens === "number") responseData.output_tokens = r.output_tokens;
+      if (typeof r.cost_usd === "number") responseData.cost_usd = r.cost_usd;
+    }
+    emitter.emit(INFERENCE_RESPONSE, responseData);
     return result;
   } catch (err) {
     emitter.emit(INFERENCE_ERROR, {

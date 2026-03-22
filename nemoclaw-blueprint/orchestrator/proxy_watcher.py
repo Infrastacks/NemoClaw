@@ -11,11 +11,18 @@ and emits ``policy.evaluated`` / ``policy.denied`` telemetry.
 from __future__ import annotations
 
 import re
+import threading
 import time
 from pathlib import Path
 from typing import IO, Any
 
-from orchestrator.telemetry import POLICY_DENIED, POLICY_EVALUATED, TelemetryEmitter
+from orchestrator.telemetry import (
+    NETWORK_APPROVED,
+    NETWORK_DENIED,
+    POLICY_DENIED,
+    POLICY_EVALUATED,
+    TelemetryEmitter,
+)
 
 # Expected proxy log format:
 # [ISO8601] POLICY decision=allow|deny policy=<name> dest=<host:port>
@@ -54,6 +61,7 @@ class ProxyLogWatcher:
     def __init__(self, emitter: TelemetryEmitter, parser: ProxyLogParser | None = None) -> None:
         self._emitter = emitter
         self._parser = parser or ProxyLogParser()
+        self._stop_event = threading.Event()
 
     def process_line(self, line: str) -> None:
         """Parse one line and emit the corresponding telemetry event if valid."""
@@ -61,9 +69,11 @@ class ProxyLogWatcher:
         if not parsed:
             return
 
+        policy_name = parsed["policy"]
         data: dict[str, Any] = {
-            "source": "policy",
-            "policy": parsed["policy"],
+            "source": "openshell",
+            "policy": policy_name,
+            "rule_id": policy_name,
             "dest": parsed["dest"],
             "method": parsed["method"],
             "path": parsed["path"],
@@ -72,24 +82,32 @@ class ProxyLogWatcher:
 
         if parsed["decision"] == "allow":
             self._emitter.emit(POLICY_EVALUATED, data)
+            self._emitter.emit(NETWORK_APPROVED, data)
         else:
-            self._emitter.emit(POLICY_DENIED, data)
+            deny_data = {**data, "reason": f"Policy denied by {policy_name}"}
+            self._emitter.emit(POLICY_DENIED, deny_data)
+            self._emitter.emit(NETWORK_DENIED, deny_data)
 
     def process_stream(self, stream: IO[str]) -> None:
         """Process all lines from a stream."""
         for line in stream:
             self.process_line(line)
 
+    def stop(self) -> None:
+        """Signal the tail loop to stop."""
+        self._stop_event.set()
+
     def tail_file(self, path: Path, *, poll_interval: float = 1.0) -> None:
         """Tail a log file, emitting events as new lines appear.
 
-        Blocks until interrupted. Starts from the current end of file.
+        Blocks until :meth:`stop` is called or the thread is interrupted.
+        Starts from the current end of file.
         """
         with path.open() as f:
             f.seek(0, 2)  # Seek to end
-            while True:
+            while not self._stop_event.is_set():
                 line = f.readline()
                 if line:
                     self.process_line(line)
                 else:
-                    time.sleep(poll_interval)
+                    self._stop_event.wait(poll_interval)
