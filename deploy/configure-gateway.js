@@ -20,17 +20,19 @@ const apiKey = process.env.NVIDIA_API_KEY || "";
 const model =
   process.env.NEMOCLAW_MODEL || "nvidia/llama-3.1-nemotron-70b-instruct";
 
-// Strip "nvidia/" prefix for the model ID inside the provider block
-const modelId = model.includes("/") ? model.split("/").pop() : model;
+// NVIDIA NCP API expects full "nvidia/model-name" in requests.
+// Use "ncp" as OpenClaw provider name so it strips "ncp/" prefix,
+// preserving the "nvidia/" prefix that the API needs.
+const modelId = model;
 
 const config = {
   agents: {
-    defaults: { model: { primary: model } },
+    defaults: { model: { primary: `ncp/${modelId}` } },
   },
   models: {
     mode: "merge",
     providers: {
-      nvidia: {
+      ncp: {
         baseUrl: inferenceEndpoint,
         apiKey: apiKey,
         api: "openai-completions",
