@@ -18,11 +18,14 @@ export { nimLocalProvider } from "./nim-local.js";
 export { vllmProvider } from "./vllm.js";
 export { ollamaProvider, detectOllama, parseOllamaList } from "./ollama.js";
 export { azureOpenAIProvider } from "./azure-openai.js";
+export { nimProvider, NIM_CURATED_MODELS, fetchNimCatalog, clearCatalogCache } from "./nim.js";
+export type { NimModel } from "./nim.js";
 
 import { ProviderRegistry } from "./registry.js";
 import { nvidiaBuildProvider } from "./nvidia-build.js";
 import { nvidiaNcpProvider } from "./nvidia-ncp.js";
 import { nimLocalProvider } from "./nim-local.js";
+import { nimProvider } from "./nim.js";
 import { vllmProvider } from "./vllm.js";
 import { ollamaProvider } from "./ollama.js";
 import { azureOpenAIProvider } from "./azure-openai.js";
@@ -32,6 +35,7 @@ export function createDefaultRegistry(): ProviderRegistry {
   registry.register(nvidiaBuildProvider);
   registry.register(nvidiaNcpProvider);
   registry.register(azureOpenAIProvider);
+  registry.register(nimProvider);
   registry.register(nimLocalProvider);
   registry.register(vllmProvider);
   registry.register(ollamaProvider);

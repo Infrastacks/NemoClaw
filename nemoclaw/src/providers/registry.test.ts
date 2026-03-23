@@ -6,6 +6,7 @@ import { ProviderRegistry } from "./registry.js";
 import { nvidiaBuildProvider } from "./nvidia-build.js";
 import { nvidiaNcpProvider } from "./nvidia-ncp.js";
 import { nimLocalProvider } from "./nim-local.js";
+import { nimProvider } from "./nim.js";
 import { vllmProvider } from "./vllm.js";
 import { ollamaProvider } from "./ollama.js";
 import { azureOpenAIProvider } from "./azure-openai.js";
@@ -38,6 +39,8 @@ describe("ProviderRegistry", () => {
     expect(registry.resolve("build")).toBe(nvidiaBuildProvider);
     expect(registry.resolve("ncp")).toBe(nvidiaNcpProvider);
     expect(registry.resolve("custom")).toBe(nvidiaNcpProvider);
+    expect(registry.resolve("nim")).toBe(nimProvider);
+    expect(registry.resolve("nim-cloud")).toBe(nimProvider);
     expect(registry.resolve("nim-local")).toBe(nimLocalProvider);
     expect(registry.resolve("vllm")).toBe(vllmProvider);
     expect(registry.resolve("ollama")).toBe(ollamaProvider);
@@ -52,12 +55,13 @@ describe("ProviderRegistry", () => {
   it("list() returns all registered providers without duplicates", () => {
     const registry = createDefaultRegistry();
     const list = registry.list();
-    // 6 unique providers (ncp handles both "ncp" and "custom")
-    expect(list).toHaveLength(6);
+    // 7 unique providers (ncp handles both "ncp" and "custom", nim handles "nim" and "nim-cloud")
+    expect(list).toHaveLength(7);
     const ids = list.map((p) => p.id);
     expect(ids).toContain("build");
     expect(ids).toContain("ncp");
     expect(ids).toContain("azure");
+    expect(ids).toContain("nim");
     expect(ids).toContain("nim-local");
     expect(ids).toContain("vllm");
     expect(ids).toContain("ollama");
