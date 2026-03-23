@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 // Writes OpenClaw gateway configuration from environment variables.
 // Called by entrypoint.sh before starting the gateway.
+// Supports multiple inference providers: ncp (NVIDIA), azure (Azure AI Foundry).
 
 const fs = require("fs");
 const os = require("os");
@@ -12,34 +13,55 @@ const agentDir = path.join(openclawDir, "agents", "main", "agent");
 
 fs.mkdirSync(agentDir, { recursive: true });
 
-// --- openclaw.json ---
+// --- Provider detection ---
 
-const inferenceEndpoint =
-  process.env.INFERENCE_ENDPOINT || "https://integrate.api.nvidia.com/v1";
-const apiKey = process.env.NVIDIA_API_KEY || "";
+const providerType = process.env.INFERENCE_PROVIDER_TYPE || "ncp";
 const model =
   process.env.NEMOCLAW_MODEL || "nvidia/llama-3.1-nemotron-70b-instruct";
-
-// NVIDIA NCP API expects full "nvidia/model-name" in requests.
-// Use "ncp" as OpenClaw provider name so it strips "ncp/" prefix,
-// preserving the "nvidia/" prefix that the API needs.
 const modelId = model;
 
+// Build provider-specific config
+let providerName, baseUrl, apiKey, apiKeyEnvVar, authProfileId, authProfileProvider;
+
+if (providerType === "azure") {
+  providerName = "azure";
+  baseUrl = "http://127.0.0.1:9001/v1";
+  apiKey = process.env.AZURE_OPENAI_API_KEY || "";
+  apiKeyEnvVar = "AZURE_OPENAI_API_KEY";
+  authProfileId = "azure:manual";
+  authProfileProvider = "azure";
+} else {
+  // Default: NVIDIA NCP
+  providerName = "ncp";
+  baseUrl = "http://127.0.0.1:9000/v1";
+  apiKey = process.env.NVIDIA_API_KEY || "";
+  apiKeyEnvVar = "NVIDIA_API_KEY";
+  authProfileId = "nvidia:manual";
+  authProfileProvider = "nvidia";
+}
+
+console.log(`[configure] provider=${providerName} model=${modelId}`);
+
+// --- openclaw.json ---
+
+// Use provider name as prefix so OpenClaw strips it, preserving the model ID.
+// E.g., "ncp/nvidia/llama-..." → strips "ncp/" → sends "nvidia/llama-..."
+// E.g., "azure/gpt-5.4-mini" → strips "azure/" → sends "gpt-5.4-mini"
 const config = {
   agents: {
-    defaults: { model: { primary: `ncp/${modelId}` } },
+    defaults: { model: { primary: `${providerName}/${modelId}` } },
   },
   models: {
     mode: "merge",
     providers: {
-      ncp: {
-        baseUrl: inferenceEndpoint,
+      [providerName]: {
+        baseUrl: baseUrl,
         apiKey: apiKey,
         api: "openai-completions",
         models: [
           {
             id: modelId,
-            name: `NVIDIA ${modelId}`,
+            name: `${providerName.toUpperCase()} ${modelId}`,
             reasoning: false,
             input: ["text"],
             cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
@@ -76,11 +98,11 @@ console.log("[configure] wrote", configPath);
 
 if (apiKey) {
   const authProfiles = {
-    "nvidia:manual": {
+    [authProfileId]: {
       type: "api_key",
-      provider: "nvidia",
-      keyRef: { source: "env", id: "NVIDIA_API_KEY" },
-      profileId: "nvidia:manual",
+      provider: authProfileProvider,
+      keyRef: { source: "env", id: apiKeyEnvVar },
+      profileId: authProfileId,
     },
   };
   const authPath = path.join(agentDir, "auth-profiles.json");

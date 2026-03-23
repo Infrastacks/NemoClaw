@@ -32,6 +32,39 @@ fs.writeFileSync(p, JSON.stringify(c, null, 2), { mode: 0o600 });
 console.log("[configure] patched gateway config (post-plugins)");
 '
 
+# ── Start inference transform proxy ───────────────────────────────
+# Each provider has its own proxy that rewrites requests for API compatibility.
+PROVIDER_TYPE="${INFERENCE_PROVIDER_TYPE:-ncp}"
+INFERENCE_PROXY_PID=""
+
+if [ "$PROVIDER_TYPE" = "azure" ]; then
+  # Azure AI Foundry: auth conversion (Bearer→api-key) + URL rewriting
+  export AZURE_UPSTREAM="${INFERENCE_ENDPOINT:-https://localhost}"
+  AZURE_PROXY_PORT=9001 /usr/local/bin/azure-transform-proxy &
+  INFERENCE_PROXY_PID=$!
+  echo "Azure transform proxy started (pid $INFERENCE_PROXY_PID)"
+  HEALTH_PORT=9001
+else
+  # NVIDIA NCP: content array flattening, strict stripping, max_completion_tokens rename
+  _raw="${INFERENCE_ENDPOINT:-https://integrate.api.nvidia.com/v1}"
+  export NCP_UPSTREAM="${_raw%/v1}"
+  NCP_PROXY_PORT=9000 /usr/local/bin/ncp-transform-proxy &
+  INFERENCE_PROXY_PID=$!
+  echo "NCP transform proxy started (pid $INFERENCE_PROXY_PID)"
+  HEALTH_PORT=9000
+fi
+
+# Wait for proxy health (max 3s)
+PROXY_TRIES=0
+while [ $PROXY_TRIES -lt 6 ]; do
+  if curl -sf "http://127.0.0.1:${HEALTH_PORT}/healthz" > /dev/null 2>&1; then
+    echo "Inference proxy healthy on 127.0.0.1:${HEALTH_PORT}"
+    break
+  fi
+  PROXY_TRIES=$((PROXY_TRIES + 1))
+  sleep 0.5
+done
+
 # Start gateway (serves web UI + inference API on localhost:18789)
 openclaw gateway run > /tmp/gateway.log 2>&1 &
 GATEWAY_PID=$!
@@ -82,15 +115,15 @@ AGENT_PID=$!
 
 cleanup() {
   echo "Shutting down..."
-  kill $GATEWAY_PID $PROXY_PID $AGENT_PID 2>/dev/null || true
-  wait $GATEWAY_PID $PROXY_PID $AGENT_PID 2>/dev/null || true
+  kill $GATEWAY_PID $PROXY_PID $INFERENCE_PROXY_PID $AGENT_PID 2>/dev/null || true
+  wait $GATEWAY_PID $PROXY_PID $INFERENCE_PROXY_PID $AGENT_PID 2>/dev/null || true
   exit 0
 }
 trap cleanup TERM INT
 
 # Keep container alive as long as the gateway is running.
 # The agent is telemetry — its failure shouldn't crash the pod.
-echo "All services running (gateway=$GATEWAY_PID, proxy=$PROXY_PID, agent=$AGENT_PID)"
+echo "All services running (gateway=$GATEWAY_PID, proxy=$PROXY_PID, inference-proxy=$INFERENCE_PROXY_PID, agent=$AGENT_PID)"
 while kill -0 $GATEWAY_PID 2>/dev/null; do
   sleep 2
 done
