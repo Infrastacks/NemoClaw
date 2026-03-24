@@ -1,14 +1,16 @@
 # Stage 0a: Build Go NCP transform proxy
 FROM golang:1.24-alpine AS ncp-proxy-builder
+ARG TARGETARCH
 WORKDIR /build
 COPY deploy/ncp-transform-proxy/ .
-RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o ncp-transform-proxy .
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=${TARGETARCH} go build -ldflags="-s -w" -o ncp-transform-proxy .
 
 # Stage 0b: Build Go Azure transform proxy
 FROM golang:1.24-alpine AS azure-proxy-builder
+ARG TARGETARCH
 WORKDIR /build
 COPY deploy/azure-transform-proxy/ .
-RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o azure-transform-proxy .
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=${TARGETARCH} go build -ldflags="-s -w" -o azure-transform-proxy .
 
 # Stage 1: Build telemetry agent
 FROM node:22-alpine AS builder
@@ -22,15 +24,16 @@ RUN npm run build
 FROM python:3.12-alpine AS runtime
 RUN apk add --no-cache curl git ca-certificates nodejs
 
-# Install CAR Python dependencies (build-base needed for uvloop C extension)
-COPY car/pyproject.toml /opt/car/pyproject.toml
-WORKDIR /opt/car
-RUN apk add --no-cache --virtual .build-deps build-base \
-    && pip install --no-cache-dir . \
-    && apk del .build-deps
-
-# Copy CAR source
-COPY car/ /opt/car/
+# Install CAR from private codicera repo via BuildKit secret
+# Usage: docker build --secret id=github_token,src=<token-file> ...
+ARG CAR_VERSION=main
+RUN --mount=type=secret,id=github_token \
+    apk add --no-cache --virtual .build-deps build-base postgresql-dev \
+    && GITHUB_TOKEN=$(cat /run/secrets/github_token) \
+    && pip install --no-cache-dir \
+       "codicera-car @ git+https://${GITHUB_TOKEN}@github.com/Infrastacks/codicera.git@${CAR_VERSION}#subdirectory=car" \
+    && apk del .build-deps \
+    && apk add --no-cache libpq
 
 # Go NCP transform proxy binary
 COPY --from=ncp-proxy-builder /build/ncp-transform-proxy /usr/local/bin/ncp-transform-proxy
@@ -49,7 +52,7 @@ RUN mkdir -p /var/lib/car /sandbox/.nemoclaw
 COPY deploy/entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
-WORKDIR /opt/car
+WORKDIR /opt
 
 # CAR Agent API
 EXPOSE 18800

@@ -1,10 +1,13 @@
-# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2026 Infrastacks Inc. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-version: "0.1.0"
+version: "2.0.0"
 min_openshell_version: "0.1.0"
-min_openclaw_version: "2026.3.0"
 digest: ""  # Computed at release time
+
+runtime:
+  framework: car
+  version: "1.0.0"
 
 profiles:
   - default
@@ -14,15 +17,15 @@ profiles:
   - vllm
 
 description: |
-  NemoClaw blueprint: orchestrates OpenClaw sandbox creation, migration,
-  and NIM/vLLM inference routing inside OpenShell.
+  NemoClaw blueprint: governed agent execution via Codicera Agent Runtime (CAR),
+  multi-provider inference routing, and OpenShell kernel-level sandboxing.
 
 components:
   sandbox:
-    image: "ghcr.io/nvidia/openshell-community/sandboxes/openclaw:latest"
-    name: "openclaw"
+    image: "ghcr.io/infrastacks/nemoclaw:2.0.0"
+    name: "nemoclaw"
     forward_ports:
-      - 18789
+      - 18800
 
   inference:
     profiles:
@@ -64,7 +67,7 @@ components:
         credential_default: "dummy"
 
   policy:
-    base: "sandboxes/openclaw/policy.yaml"
+    base: "sandboxes/nemoclaw/policy.yaml"
     additions:
       nim_service:
         name: nim_service

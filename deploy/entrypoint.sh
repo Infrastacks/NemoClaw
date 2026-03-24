@@ -50,7 +50,6 @@ export CAR_DB_PATH="/var/lib/car/state.db"
 export INFERENCE_URL="${INFERENCE_URL:-http://inference.local/v1/chat/completions}"
 export INFERENCE_MODEL="${INFERENCE_MODEL:-default}"
 
-cd /opt/car
 python3 -m uvicorn server.app:app --host 0.0.0.0 --port 18800 --log-level info &
 CAR_PID=$!
 echo "CAR Agent API server started (pid $CAR_PID) on :18800"

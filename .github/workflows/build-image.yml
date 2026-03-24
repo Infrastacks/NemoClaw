@@ -12,7 +12,7 @@ env:
   IMAGE_NAME: infrastacks/nemoclaw
 
 jobs:
-  build:
+  build-and-test:
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -48,14 +48,49 @@ jobs:
             type=sha
             type=raw,value=latest,enable={{is_default_branch}}
 
+      # Build single-arch image for testing (load: true requires single platform)
+      - name: Build test image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: deploy/Dockerfile
+          platforms: linux/amd64
+          load: true
+          tags: nemoclaw:test
+          secrets: |
+            github_token=${{ secrets.CODICERA_TOKEN }}
+          cache-from: type=gha
+
+      # Checkout CAR tests from private codicera repo
+      - name: Checkout CAR tests
+        uses: actions/checkout@v4
+        with:
+          repository: Infrastacks/codicera
+          token: ${{ secrets.CODICERA_TOKEN }}
+          path: codicera
+          sparse-checkout: |
+            car/tests
+
+      # Run CAR test suite inside the built container
+      - name: Run CAR tests
+        run: |
+          docker run --rm \
+            -v "$GITHUB_WORKSPACE/codicera/car/tests:/opt/tests" \
+            nemoclaw:test \
+            sh -c "pip install --no-cache-dir pytest pytest-asyncio && python -m pytest /opt/tests -v --tb=short"
+
+      # Multi-arch build and push (only on push to main or tags)
       - name: Build and push
+        if: github.event_name != 'pull_request'
         uses: docker/build-push-action@v6
         with:
           context: .
           file: deploy/Dockerfile
           platforms: linux/amd64,linux/arm64
-          push: ${{ github.event_name != 'pull_request' }}
+          push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          secrets: |
+            github_token=${{ secrets.CODICERA_TOKEN }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
