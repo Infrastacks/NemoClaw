@@ -6,6 +6,8 @@ echo "Starting NemoClaw runtime (v2 — CAR Agent API)..."
 # Ensure directories exist
 mkdir -p /sandbox/.nemoclaw
 mkdir -p /var/lib/car
+mkdir -p /root/.nemoclaw
+ln -sf /sandbox/.nemoclaw/events.jsonl /root/.nemoclaw/events.jsonl
 
 # Override hostname — K8s pod names exceed the 63-byte mDNS label limit
 hostname "${SANDBOX_ID:-nemoclaw}" 2>/dev/null || true
@@ -47,8 +49,9 @@ done
 # ── Start CAR Agent API server ────────────────────────────────────
 # Replaces OpenClaw gateway. Serves REST/SSE on :18800.
 export CAR_DB_PATH="/var/lib/car/state.db"
-export INFERENCE_URL="${INFERENCE_URL:-http://inference.local/v1/chat/completions}"
-export INFERENCE_MODEL="${INFERENCE_MODEL:-default}"
+export INFERENCE_URL="${INFERENCE_URL:-http://127.0.0.1:${HEALTH_PORT}/v1/chat/completions}"
+export INFERENCE_MODEL="${INFERENCE_MODEL:-${NEMOCLAW_MODEL:-default}}"
+export INFERENCE_API_KEY="${INFERENCE_API_KEY:-${NVIDIA_API_KEY:-}}"
 
 python3 -m uvicorn server.app:app --host 0.0.0.0 --port 18800 --log-level info &
 CAR_PID=$!
