@@ -22,7 +22,7 @@ description: |
 
 components:
   sandbox:
-    image: "ghcr.io/infrastacks/nemoclaw:2.0.0"
+    image: "codiceraimages.azurecr.io/nemoclaw:v2.1.0"
     name: "nemoclaw"
     forward_ports:
       - 18800

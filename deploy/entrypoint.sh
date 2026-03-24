@@ -51,7 +51,7 @@ done
 export CAR_DB_PATH="/var/lib/car/state.db"
 export INFERENCE_URL="${INFERENCE_URL:-http://127.0.0.1:${HEALTH_PORT}/v1/chat/completions}"
 export INFERENCE_MODEL="${INFERENCE_MODEL:-${NEMOCLAW_MODEL:-default}}"
-export INFERENCE_API_KEY="${INFERENCE_API_KEY:-${NVIDIA_API_KEY:-}}"
+export INFERENCE_API_KEY="${INFERENCE_API_KEY:-${AZURE_OPENAI_API_KEY:-${NVIDIA_API_KEY:-${OPENAI_API_KEY:-}}}}"
 
 python3 -m uvicorn server.app:app --host 0.0.0.0 --port 18800 --log-level info &
 CAR_PID=$!
@@ -74,15 +74,17 @@ fi
 
 # ── Start telemetry agent ─────────────────────────────────────────
 
-# Build WebSocket URL from CODICERA_ENDPOINT
-WS_URL="${CODICERA_ENDPOINT:-http://localhost:8080}"
-# Convert https:// to wss://
-WS_URL=$(echo "$WS_URL" | sed 's|^https://|wss://|;s|^http://|ws://|')
-WS_URL="${WS_URL}/ws?channel=telemetry&sandboxId=${SANDBOX_ID:-unknown}"
+# Build base WebSocket URL — the agent appends query params itself
+AGENT_WS="${CODICERA_ENDPOINT:-http://localhost:8080}"
+AGENT_WS=$(echo "$AGENT_WS" | sed 's|^https://|wss://|;s|^http://|ws://|')
+AGENT_WS="${AGENT_WS}/ws"
 
-echo "Connecting agent to: $WS_URL"
+echo "Connecting agent to: $AGENT_WS (sandbox: ${SANDBOX_ID:-unknown})"
 
-node /opt/agent/cli.js --ws-url "$WS_URL" &
+node /opt/agent/index.js \
+  --sandbox-id "${SANDBOX_ID:-unknown}" \
+  --api-url "$AGENT_WS" \
+  --events-path /sandbox/.nemoclaw/events.jsonl &
 AGENT_PID=$!
 
 # Write a startup heartbeat event AFTER the agent starts (tailer seeks to EOF).

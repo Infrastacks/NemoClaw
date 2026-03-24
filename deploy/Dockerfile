@@ -1,16 +1,6 @@
-# Stage 0a: Build Go NCP transform proxy
-FROM golang:1.24-alpine AS ncp-proxy-builder
-ARG TARGETARCH
-WORKDIR /build
-COPY deploy/ncp-transform-proxy/ .
-RUN CGO_ENABLED=0 GOOS=linux GOARCH=${TARGETARCH} go build -ldflags="-s -w" -o ncp-transform-proxy .
-
-# Stage 0b: Build Go Azure transform proxy
-FROM golang:1.24-alpine AS azure-proxy-builder
-ARG TARGETARCH
-WORKDIR /build
-COPY deploy/azure-transform-proxy/ .
-RUN CGO_ENABLED=0 GOOS=linux GOARCH=${TARGETARCH} go build -ldflags="-s -w" -o azure-transform-proxy .
+# Pre-built Go transform proxies (cross-compiled for linux/amd64 on host)
+# To rebuild: CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o <binary> .
+# Original multi-stage Go builds removed to avoid QEMU crashes on ARM Macs.
 
 # Stage 1: Build telemetry agent
 FROM node:22-alpine AS builder
@@ -24,22 +14,17 @@ RUN npm run build
 FROM python:3.12-alpine AS runtime
 RUN apk add --no-cache curl git ca-certificates nodejs
 
-# Install CAR from private codicera repo via BuildKit secret
-# Usage: docker build --secret id=github_token,src=<token-file> ...
-ARG CAR_VERSION=main
-RUN --mount=type=secret,id=github_token \
-    apk add --no-cache --virtual .build-deps build-base postgresql-dev \
-    && GITHUB_TOKEN=$(cat /run/secrets/github_token) \
-    && pip install --no-cache-dir \
-       "codicera-car @ git+https://${GITHUB_TOKEN}@github.com/Infrastacks/codicera.git@${CAR_VERSION}#subdirectory=car" \
+# Install CAR from local source (or private repo via BuildKit secret)
+COPY car/ /opt/car-src/
+RUN apk add --no-cache --virtual .build-deps build-base postgresql-dev \
+    && pip install --no-cache-dir /opt/car-src/ \
     && apk del .build-deps \
     && apk add --no-cache libpq
 
-# Go NCP transform proxy binary
-COPY --from=ncp-proxy-builder /build/ncp-transform-proxy /usr/local/bin/ncp-transform-proxy
-
-# Go Azure transform proxy binary
-COPY --from=azure-proxy-builder /build/azure-transform-proxy /usr/local/bin/azure-transform-proxy
+# Pre-built Go transform proxy binaries
+COPY deploy/prebuilt/ncp-transform-proxy /usr/local/bin/ncp-transform-proxy
+COPY deploy/prebuilt/azure-transform-proxy /usr/local/bin/azure-transform-proxy
+RUN chmod +x /usr/local/bin/ncp-transform-proxy /usr/local/bin/azure-transform-proxy
 
 # Copy built telemetry agent and production dependencies
 COPY --from=builder /build/dist /opt/agent/
