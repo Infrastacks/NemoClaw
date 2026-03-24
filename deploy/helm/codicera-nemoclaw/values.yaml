@@ -5,10 +5,6 @@ image:
   pullPolicy: IfNotPresent
   tag: ""
 
-agentImage:
-  repository: ""
-  tag: ""
-
 imagePullSecrets: []
 nameOverride: ""
 fullnameOverride: ""
@@ -19,20 +15,12 @@ codicera:
   orgId: ""
 
 resources:
-  nemoclaw:
-    limits:
-      cpu: "4"
-      memory: 8Gi
-    requests:
-      cpu: "1"
-      memory: 2Gi
-  agent:
-    limits:
-      cpu: 200m
-      memory: 256Mi
-    requests:
-      cpu: 100m
-      memory: 128Mi
+  limits:
+    cpu: "4"
+    memory: 8Gi
+  requests:
+    cpu: "1"
+    memory: 2Gi
 
 gpu:
   enabled: false
@@ -41,7 +29,6 @@ gpu:
 service:
   type: ClusterIP
   apiPort: 18800
-  metricsPort: 18790
 
 serviceAccount:
   create: true

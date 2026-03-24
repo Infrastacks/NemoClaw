@@ -80,7 +80,6 @@ WS_URL="${WS_URL}/ws?channel=telemetry&sandboxId=${SANDBOX_ID:-unknown}"
 
 echo "Connecting agent to: $WS_URL"
 
-cd /opt/nemoclaw
 node /opt/agent/cli.js --ws-url "$WS_URL" &
 AGENT_PID=$!
 

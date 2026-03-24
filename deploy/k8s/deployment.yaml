@@ -29,8 +29,16 @@ spec:
           ports:
             - name: api
               containerPort: 18800
-            - name: metrics
-              containerPort: 18790
+          env:
+            - name: CODICERA_ENDPOINT
+              # REPLACE: with your Codicera API endpoint
+              value: "https://codicera-api.infrastacks.workers.dev"
+            - name: SANDBOX_ID
+              # REPLACE: with your sandbox ID
+              value: "REPLACE_SANDBOX_ID"
+            - name: ORG_ID
+              # REPLACE: with your org ID
+              value: "REPLACE_ORG_ID"
           livenessProbe:
             httpGet:
               path: /v1/agent/status
@@ -50,23 +58,3 @@ spec:
             limits:
               cpu: "4"
               memory: 8Gi
-        - name: agent
-          # REPLACE: image with your agent sidecar image
-          image: ghcr.io/infrastacks/nemoclaw:latest
-          env:
-            - name: CODICERA_ENDPOINT
-              # REPLACE: with your Codicera API endpoint
-              value: "https://codicera-api.infrastacks.workers.dev"
-            - name: SANDBOX_ID
-              # REPLACE: with your sandbox ID
-              value: "REPLACE_SANDBOX_ID"
-            - name: ORG_ID
-              # REPLACE: with your org ID
-              value: "REPLACE_ORG_ID"
-          resources:
-            requests:
-              cpu: 100m
-              memory: 128Mi
-            limits:
-              cpu: 200m
-              memory: 256Mi

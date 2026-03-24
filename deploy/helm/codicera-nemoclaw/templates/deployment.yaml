@@ -30,13 +30,16 @@ spec:
             - name: api
               containerPort: 18800
               protocol: TCP
-            - name: metrics
-              containerPort: 18790
-              protocol: TCP
-          {{- with .Values.extraEnv }}
           env:
+            - name: CODICERA_ENDPOINT
+              value: {{ .Values.codicera.endpoint | quote }}
+            - name: SANDBOX_ID
+              value: {{ .Values.codicera.sandboxId | quote }}
+            - name: ORG_ID
+              value: {{ .Values.codicera.orgId | quote }}
+            {{- with .Values.extraEnv }}
             {{- toYaml . | nindent 12 }}
-          {{- end }}
+            {{- end }}
           livenessProbe:
             httpGet:
               path: /v1/agent/status
@@ -50,23 +53,11 @@ spec:
             initialDelaySeconds: 5
             periodSeconds: 10
           resources:
-            {{- toYaml .Values.resources.nemoclaw | nindent 12 }}
+            {{- toYaml .Values.resources | nindent 12 }}
           {{- if .Values.gpu.enabled }}
             limits:
               nvidia.com/gpu: {{ .Values.gpu.count | quote }}
           {{- end }}
-        - name: agent
-          image: "{{ .Values.agentImage.repository | default .Values.image.repository }}:{{ .Values.agentImage.tag | default .Values.image.tag | default .Chart.AppVersion }}"
-          imagePullPolicy: {{ .Values.image.pullPolicy }}
-          env:
-            - name: CODICERA_ENDPOINT
-              value: {{ .Values.codicera.endpoint | quote }}
-            - name: SANDBOX_ID
-              value: {{ .Values.codicera.sandboxId | quote }}
-            - name: ORG_ID
-              value: {{ .Values.codicera.orgId | quote }}
-          resources:
-            {{- toYaml .Values.resources.agent | nindent 12 }}
       {{- with .Values.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}

@@ -11,9 +11,5 @@ spec:
       targetPort: api
       protocol: TCP
       name: api
-    - port: {{ .Values.service.metricsPort }}
-      targetPort: metrics
-      protocol: TCP
-      name: metrics
   selector:
     {{- include "codicera-nemoclaw.selectorLabels" . | nindent 4 }}
