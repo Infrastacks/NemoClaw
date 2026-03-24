@@ -1,4 +1,7 @@
-# NemoClaw sandbox image — OpenClaw + NemoClaw plugin inside OpenShell
+# NemoClaw sandbox image — CAR Agent Runtime + NemoClaw orchestrator inside OpenShell
+#
+# v2.0.0-alpha: Replaces OpenClaw gateway with Codicera Agent Runtime (CAR).
+# CAR serves the Agent API on :18800 (REST/SSE). OpenClaw is removed entirely.
 
 FROM node:22-slim
 
@@ -12,22 +15,26 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 # Create sandbox user (matches OpenShell convention)
 RUN groupadd -r sandbox && useradd -r -g sandbox -d /sandbox -s /bin/bash sandbox \
-    && mkdir -p /sandbox/.openclaw /sandbox/.nemoclaw \
+    && mkdir -p /sandbox/.nemoclaw \
     && chown -R sandbox:sandbox /sandbox
 
-# Install OpenClaw CLI
-RUN npm install -g openclaw@2026.3.11
+# Install Python dependencies for CAR + blueprint runner
+RUN pip3 install --break-system-packages \
+    pyyaml \
+    fastapi \
+    "uvicorn[standard]" \
+    httpx \
+    aiosqlite
 
-# Install PyYAML for blueprint runner
-RUN pip3 install --break-system-packages pyyaml
-
-# Copy our plugin and blueprint into the sandbox
-COPY nemoclaw/dist/ /opt/nemoclaw/dist/
-COPY nemoclaw/openclaw.plugin.json /opt/nemoclaw/
-COPY nemoclaw/package.json /opt/nemoclaw/
+# Copy blueprint into the sandbox
 COPY nemoclaw-blueprint/ /opt/nemoclaw-blueprint/
 
-# Install runtime dependencies only (no devDependencies, no build step)
+# Copy telemetry agent (Node.js sidecar)
+COPY agent/ /opt/agent/
+COPY nemoclaw/dist/ /opt/nemoclaw/dist/
+COPY nemoclaw/package.json /opt/nemoclaw/
+
+# Install telemetry agent runtime dependencies
 WORKDIR /opt/nemoclaw
 RUN npm install --omit=dev
 
@@ -35,38 +42,25 @@ RUN npm install --omit=dev
 RUN mkdir -p /sandbox/.nemoclaw/blueprints/0.1.0 \
     && cp -r /opt/nemoclaw-blueprint/* /sandbox/.nemoclaw/blueprints/0.1.0/
 
-# Copy startup script
-COPY scripts/nemoclaw-start.sh /usr/local/bin/nemoclaw-start
-RUN chmod +x /usr/local/bin/nemoclaw-start
+# Copy CAR (Codicera Agent Runtime) — commercial IP, ships inside container
+COPY car/ /opt/car/
+
+# Create CAR state directory (SQLite checkpoint data persists via PVC)
+RUN mkdir -p /var/lib/car && chown sandbox:sandbox /var/lib/car
+
+# Copy entrypoint
+COPY deploy/entrypoint.sh /usr/local/bin/entrypoint.sh
+RUN chmod +x /usr/local/bin/entrypoint.sh
 
 WORKDIR /sandbox
 USER sandbox
 
-# Pre-create OpenClaw directories
-RUN mkdir -p /sandbox/.openclaw/agents/main/agent \
-    && chmod 700 /sandbox/.openclaw
+# Agent API server on :18800 (replaces OpenClaw gateway on :18789)
+EXPOSE 18800
+# NemoClaw orchestrator on :18790
+EXPOSE 18790
 
-# Write openclaw.json: set nvidia as default provider, route through
-# inference.local (OpenShell gateway proxy). No API key needed here —
-# openshell injects credentials via the provider configuration.
-RUN python3 -c "\
-import json, os; \
-config = { \
-    'agents': {'defaults': {'model': {'primary': 'nvidia/nemotron-3-super-120b-a12b'}}}, \
-    'models': {'mode': 'merge', 'providers': {'nvidia': { \
-        'baseUrl': 'https://inference.local/v1', \
-        'apiKey': 'openshell-managed', \
-        'api': 'openai-completions', \
-        'models': [{'id': 'nemotron-3-super-120b-a12b', 'name': 'NVIDIA Nemotron 3 Super 120B', 'reasoning': False, 'input': ['text'], 'cost': {'input': 0, 'output': 0, 'cacheRead': 0, 'cacheWrite': 0}, 'contextWindow': 131072, 'maxTokens': 4096}] \
-    }}} \
-}; \
-path = os.path.expanduser('~/.openclaw/openclaw.json'); \
-json.dump(config, open(path, 'w'), indent=2); \
-os.chmod(path, 0o600)"
+HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
+    CMD curl -sf http://localhost:18800/v1/agent/status || exit 1
 
-# Install NemoClaw plugin into OpenClaw
-RUN openclaw doctor --fix > /dev/null 2>&1 || true \
-    && openclaw plugins install /opt/nemoclaw > /dev/null 2>&1 || true
-
-ENTRYPOINT ["/bin/bash"]
-CMD []
+ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]

@@ -6,7 +6,7 @@ services:
       context: ..
       dockerfile: deploy/Dockerfile
     ports:
-      - "18789:18789"
+      - "18800:18800"
       - "18790:18790"
     environment:
       - CODICERA_ENDPOINT=${CODICERA_ENDPOINT:-https://codicera-api.infrastacks.workers.dev}

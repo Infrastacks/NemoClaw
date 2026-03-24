@@ -40,7 +40,7 @@ gpu:
 
 service:
   type: ClusterIP
-  apiPort: 18789
+  apiPort: 18800
   metricsPort: 18790
 
 serviceAccount:

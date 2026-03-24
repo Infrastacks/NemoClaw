@@ -28,18 +28,18 @@ spec:
           image: ghcr.io/infrastacks/nemoclaw:latest
           ports:
             - name: api
-              containerPort: 18789
+              containerPort: 18800
             - name: metrics
               containerPort: 18790
           livenessProbe:
             httpGet:
-              path: /health
+              path: /v1/agent/status
               port: api
             initialDelaySeconds: 15
             periodSeconds: 30
           readinessProbe:
             httpGet:
-              path: /health
+              path: /v1/agent/status
               port: api
             initialDelaySeconds: 5
             periodSeconds: 10
