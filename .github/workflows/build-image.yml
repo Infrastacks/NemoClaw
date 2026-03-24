@@ -71,13 +71,13 @@ jobs:
           sparse-checkout: |
             car/tests
 
-      # Run CAR test suite inside the built container
+      # Run CAR test suite inside the built container (override entrypoint)
       - name: Run CAR tests
         run: |
-          docker run --rm \
+          docker run --rm --entrypoint sh \
             -v "$GITHUB_WORKSPACE/codicera/car/tests:/opt/tests" \
             nemoclaw:test \
-            sh -c "pip install --no-cache-dir pytest pytest-asyncio && python -m pytest /opt/tests -v --tb=short"
+            -c "pip install --no-cache-dir pytest pytest-asyncio && python -m pytest /opt/tests -v --tb=short"
 
       # Multi-arch build and push (only on push to main or tags)
       - name: Build and push
