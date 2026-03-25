@@ -1,16 +1,10 @@
 # Pre-built Go transform proxies (cross-compiled for linux/amd64 on host)
 # To rebuild: CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o <binary> .
 # Original multi-stage Go builds removed to avoid QEMU crashes on ARM Macs.
+#
+# Pre-built Node.js telemetry agent (from codicera/agent, compiled on host)
+# To rebuild: cd codicera/agent && npx tsc && copy dist/*.js + node_modules/ws to deploy/prebuilt-agent/
 
-# Stage 1: Build telemetry agent
-FROM node:22-alpine AS builder
-WORKDIR /build
-COPY agent/package.json agent/package-lock.json ./
-RUN npm ci
-COPY agent/ .
-RUN npm run build
-
-# Stage 2: Runtime — CAR Agent API + telemetry agent
 FROM python:3.12-alpine AS runtime
 RUN apk add --no-cache curl git ca-certificates nodejs
 
@@ -26,9 +20,8 @@ COPY deploy/prebuilt/ncp-transform-proxy /usr/local/bin/ncp-transform-proxy
 COPY deploy/prebuilt/azure-transform-proxy /usr/local/bin/azure-transform-proxy
 RUN chmod +x /usr/local/bin/ncp-transform-proxy /usr/local/bin/azure-transform-proxy
 
-# Copy built telemetry agent and production dependencies
-COPY --from=builder /build/dist /opt/agent/
-COPY --from=builder /build/node_modules /opt/agent/node_modules/
+# Pre-built telemetry agent (Codicera agent with heartbeat + log forwarding)
+COPY deploy/prebuilt-agent/ /opt/agent/
 
 # Create state directory for CAR SQLite checkpointer
 RUN mkdir -p /var/lib/car /sandbox/.nemoclaw

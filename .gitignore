@@ -8,3 +8,8 @@ __pycache__/
 docs/_build/
 coverage/
 htmlcov/
+
+# Commercial artifacts — built locally, never committed to OSS repo
+car/
+deploy/prebuilt/
+deploy/prebuilt-agent/
