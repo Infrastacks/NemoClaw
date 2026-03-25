@@ -156,11 +156,7 @@ STUB_PATHS = [
     ("POST", "/v1/sandboxes/test-id/start"),
     ("POST", "/v1/sandboxes/test-id/stop"),
     ("DELETE", "/v1/sandboxes/test-id"),
-    ("GET", "/v1/policies"),
-    ("POST", "/v1/sandboxes/test-id/policies"),
     ("POST", "/v1/sandboxes/test-id/restart"),
-    ("DELETE", "/v1/sandboxes/test-id/policies/pol-1"),
-    ("GET", "/v1/status"),
 ]
 
 
@@ -170,6 +166,98 @@ def test_stub_endpoints_return_501(client, method, path):
     assert resp.status_code == 501
     data = resp.json()
     assert data["code"] == "NOT_IMPLEMENTED"
+
+
+# --- policy endpoints (implemented via OpenShell CLI) ---
+
+
+def test_list_policies_openshell_unavailable(client, monkeypatch):
+    """GET /v1/policies returns 503 when openshell is not available."""
+    monkeypatch.setattr(
+        "orchestrator.server.run_cmd",
+        lambda *a, **kw: type("R", (), {"returncode": 1, "stderr": "not found", "stdout": ""})(),
+    )
+    resp = client.get("/v1/policies")
+    assert resp.status_code == 503
+    assert "OpenShell unavailable" in resp.json()["error"]
+
+
+def test_list_policies_success(client, monkeypatch):
+    """GET /v1/policies returns policy data when openshell works."""
+    monkeypatch.setattr(
+        "orchestrator.server.run_cmd",
+        lambda *a, **kw: type("R", (), {"returncode": 0, "stderr": "", "stdout": '[]'})(),
+    )
+    resp = client.get("/v1/policies")
+    assert resp.status_code == 200
+    assert resp.json()["data"] == []
+
+
+def test_attach_policy_success(client, monkeypatch):
+    """POST /v1/sandboxes/{id}/policies applies a policy via openshell."""
+    monkeypatch.setattr(
+        "orchestrator.server.run_cmd",
+        lambda *a, **kw: type("R", (), {"returncode": 0, "stderr": "", "stdout": ""})(),
+    )
+    resp = client.post(
+        "/v1/sandboxes/test-id/policies",
+        json={"name": "net-deny", "type": "network", "spec": {"deny": ["*"]}},
+    )
+    assert resp.status_code == 200
+    assert resp.json()["data"]["name"] == "net-deny"
+    assert resp.json()["data"]["status"] == "applied"
+
+
+def test_attach_policy_failure(client, monkeypatch):
+    """POST /v1/sandboxes/{id}/policies returns 502 on openshell failure."""
+    monkeypatch.setattr(
+        "orchestrator.server.run_cmd",
+        lambda *a, **kw: type("R", (), {"returncode": 1, "stderr": "permission denied", "stdout": ""})(),
+    )
+    resp = client.post(
+        "/v1/sandboxes/test-id/policies",
+        json={"name": "net-deny", "type": "network", "spec": {"deny": ["*"]}},
+    )
+    assert resp.status_code == 502
+    assert "Failed to apply policy" in resp.json()["error"]
+
+
+def test_detach_policy_not_supported(client):
+    """DELETE /v1/sandboxes/{id}/policies/{policy_id} returns 501."""
+    resp = client.delete("/v1/sandboxes/test-id/policies/pol-1")
+    assert resp.status_code == 501
+    assert "not yet supported" in resp.json()["error"]
+
+
+# --- system status (implemented via OpenShell CLI) ---
+
+
+def test_status_openshell_available(client, monkeypatch):
+    """GET /v1/status returns OpenShell version when available."""
+    monkeypatch.setattr(
+        "orchestrator.server.run_cmd",
+        lambda *a, **kw: type("R", (), {"returncode": 0, "stderr": "", "stdout": "0.5.0\n"})(),
+    )
+    monkeypatch.setenv("SANDBOX_ID", "test-sandbox")
+    resp = client.get("/v1/status")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["openshell"]["available"] is True
+    assert data["openshell"]["version"] == "0.5.0"
+    assert data["sandbox_id"] == "test-sandbox"
+
+
+def test_status_openshell_unavailable(client, monkeypatch):
+    """GET /v1/status reports unavailable when openshell is missing."""
+    monkeypatch.setattr(
+        "orchestrator.server.run_cmd",
+        lambda *a, **kw: type("R", (), {"returncode": 127, "stderr": "not found", "stdout": ""})(),
+    )
+    resp = client.get("/v1/status")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["openshell"]["available"] is False
+    assert data["openshell"]["version"] is None
 
 
 # --- plan persistence (API level) ---

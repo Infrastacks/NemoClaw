@@ -72,6 +72,48 @@ if [ $CAR_TRIES -ge 20 ]; then
   echo "WARNING: CAR Agent API did not become healthy within 10s"
 fi
 
+# ── Apply Codicera policies via OpenShell ─────────────────────
+if [ -n "${CODICERA_POLICIES:-}" ]; then
+  echo "Applying Codicera policies via OpenShell..."
+  echo "$CODICERA_POLICIES" | base64 -d | python3 -c "
+import json, sys, subprocess, tempfile, os
+try:
+    import yaml
+except ImportError:
+    yaml = None
+
+policies = json.load(sys.stdin)
+applied = 0
+failed = 0
+for p in policies:
+    try:
+        if yaml:
+            fd, path = tempfile.mkstemp(suffix='.yaml')
+            with os.fdopen(fd, 'w') as f:
+                yaml.dump(p['spec'], f, default_flow_style=False)
+            result = subprocess.run(
+                ['openshell', 'policy', 'set', p['name'], '--policy', path],
+                capture_output=True, text=True, timeout=10
+            )
+            os.unlink(path)
+        else:
+            result = subprocess.run(
+                ['openshell', 'policy', 'set', '--name', p['name'], '--config', json.dumps(p['spec'])],
+                capture_output=True, text=True, timeout=10
+            )
+        if result.returncode == 0:
+            applied += 1
+            print(f'Policy {p[\"name\"]}: applied')
+        else:
+            failed += 1
+            print(f'Policy {p[\"name\"]}: failed ({result.stderr.strip()})')
+    except Exception as e:
+        failed += 1
+        print(f'Policy {p[\"name\"]}: error ({e})')
+print(f'Policies: {applied} applied, {failed} failed')
+" 2>&1
+fi
+
 # ── Start telemetry agent ─────────────────────────────────────────
 
 # Build base WebSocket URL — the agent appends query params itself

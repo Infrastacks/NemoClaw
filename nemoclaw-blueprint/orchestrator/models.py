@@ -5,6 +5,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from pydantic import BaseModel
 
 # ---------------------------------------------------------------------------
@@ -82,3 +84,9 @@ class ApplyRequest(BaseModel):
     profile: str = "default"
     plan_path: str | None = None
     endpoint_url: str | None = None
+
+
+class PolicyAttachRequest(BaseModel):
+    name: str
+    type: str  # "network" | "filesystem"
+    spec: dict[str, Any]

@@ -11,7 +11,7 @@ RUN apk add --no-cache curl git ca-certificates nodejs
 # Install CAR from local source (or private repo via BuildKit secret)
 COPY car/ /opt/car-src/
 RUN apk add --no-cache --virtual .build-deps build-base postgresql-dev \
-    && pip install --no-cache-dir /opt/car-src/ \
+    && pip install --no-cache-dir /opt/car-src/ pyyaml \
     && apk del .build-deps \
     && apk add --no-cache libpq
 
@@ -19,6 +19,10 @@ RUN apk add --no-cache --virtual .build-deps build-base postgresql-dev \
 COPY deploy/prebuilt/ncp-transform-proxy /usr/local/bin/ncp-transform-proxy
 COPY deploy/prebuilt/azure-transform-proxy /usr/local/bin/azure-transform-proxy
 RUN chmod +x /usr/local/bin/ncp-transform-proxy /usr/local/bin/azure-transform-proxy
+
+# Pre-built OpenShell binary (kernel-level policy enforcement)
+COPY deploy/prebuilt/openshell /usr/local/bin/openshell
+RUN chmod +x /usr/local/bin/openshell
 
 # Pre-built telemetry agent (Codicera agent with heartbeat + log forwarding)
 COPY deploy/prebuilt-agent/ /opt/agent/

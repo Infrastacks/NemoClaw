@@ -10,10 +10,15 @@ Entry point: ``python -m orchestrator.server`` or ``runner.py serve``.
 
 from __future__ import annotations
 
+import json
+import os
+import tempfile
+
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import JSONResponse
 
 from orchestrator import core
+from orchestrator.core import run_cmd
 from orchestrator.models import (
     ApplyRequest,
     ApplyResponse,
@@ -23,6 +28,7 @@ from orchestrator.models import (
     HealthResponse,
     PlanRequest,
     PlanResponse,
+    PolicyAttachRequest,
     RollbackResponse,
     RunStatusResponse,
 )
@@ -216,7 +222,6 @@ def run_rollback(run_id: str) -> RollbackResponse:
 # ---------------------------------------------------------------------------
 
 _STUB_MSG = "Not implemented — requires OpenShell SDK"
-_POLICY_STUB_MSG = "Not implemented — future"
 
 
 def _stub_response(msg: str = _STUB_MSG) -> JSONResponse:
@@ -224,6 +229,16 @@ def _stub_response(msg: str = _STUB_MSG) -> JSONResponse:
         status_code=501,
         content=ErrorResponse(error=msg, code="NOT_IMPLEMENTED").model_dump(),
     )
+
+
+def _sandbox_name() -> str:
+    """Get sandbox name from env."""
+    return os.environ.get("SANDBOX_ID", "default")
+
+
+# ---------------------------------------------------------------------------
+# Sandbox lifecycle stubs (501 Not Implemented)
+# ---------------------------------------------------------------------------
 
 
 @app.post("/v1/sandboxes")
@@ -256,29 +271,113 @@ def delete_sandbox(sandbox_id: str) -> JSONResponse:
     return _stub_response()
 
 
-@app.get("/v1/policies")
-def list_policies() -> JSONResponse:
-    return _stub_response(_POLICY_STUB_MSG)
-
-
-@app.post("/v1/sandboxes/{sandbox_id}/policies")
-def attach_policy(sandbox_id: str) -> JSONResponse:
-    return _stub_response(_POLICY_STUB_MSG)
-
-
 @app.post("/v1/sandboxes/{sandbox_id}/restart")
 def restart_sandbox(sandbox_id: str) -> JSONResponse:
     return _stub_response()
 
 
+# ---------------------------------------------------------------------------
+# Policy endpoints (implemented via OpenShell CLI)
+# ---------------------------------------------------------------------------
+
+
+@app.get("/v1/policies")
+def list_policies() -> JSONResponse:
+    """List applied policies via openshell."""
+    result = run_cmd(
+        ["openshell", "policy", "list", _sandbox_name()],
+        check=False,
+        capture=True,
+    )
+    if result.returncode != 0:
+        return JSONResponse(
+            status_code=503,
+            content={"error": "OpenShell unavailable", "detail": result.stderr},
+        )
+    try:
+        policies = json.loads(result.stdout)
+    except (json.JSONDecodeError, TypeError):
+        policies = {"raw": result.stdout}
+    return JSONResponse(content={"data": policies})
+
+
+@app.post("/v1/sandboxes/{sandbox_id}/policies")
+def attach_policy(sandbox_id: str, req: PolicyAttachRequest) -> JSONResponse:
+    """Apply a policy via openshell policy set."""
+    emitter = _server_emitter()
+
+    try:
+        import yaml
+    except ImportError:
+        yaml = None
+
+    if yaml:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
+            yaml.dump(req.spec, f, default_flow_style=False)
+            policy_path = f.name
+
+        result = run_cmd(
+            ["openshell", "policy", "set", req.name, "--policy", policy_path],
+            check=False,
+            capture=True,
+        )
+        os.unlink(policy_path)
+    else:
+        result = run_cmd(
+            ["openshell", "policy", "set", "--name", req.name, "--config", json.dumps(req.spec)],
+            check=False,
+            capture=True,
+        )
+
+    if result.returncode != 0:
+        return JSONResponse(
+            status_code=502,
+            content={"error": f"Failed to apply policy: {result.stderr}"},
+        )
+
+    emitter.emit(POLICY_APPLIED, {
+        "policy_name": req.name,
+        "policy_type": req.type,
+        "sandbox_id": sandbox_id,
+    })
+
+    return JSONResponse(
+        status_code=200,
+        content={"data": {"name": req.name, "status": "applied"}},
+    )
+
+
 @app.delete("/v1/sandboxes/{sandbox_id}/policies/{policy_id}")
 def detach_policy(sandbox_id: str, policy_id: str) -> JSONResponse:
-    return _stub_response(_POLICY_STUB_MSG)
+    """Remove a policy. OpenShell doesn't support individual removal yet."""
+    return JSONResponse(
+        status_code=501,
+        content={
+            "error": (
+                "Individual policy removal not yet supported by OpenShell. "
+                "Redeploy to update policies."
+            ),
+        },
+    )
+
+
+# ---------------------------------------------------------------------------
+# System status (implemented via OpenShell CLI)
+# ---------------------------------------------------------------------------
 
 
 @app.get("/v1/status")
 def system_status() -> JSONResponse:
-    return _stub_response("Not implemented — future")
+    """Return system status including OpenShell availability."""
+    result = run_cmd(["openshell", "--version"], check=False, capture=True)
+    openshell_available = result.returncode == 0
+    return JSONResponse(content={
+        "openshell": {
+            "available": openshell_available,
+            "version": result.stdout.strip() if openshell_available else None,
+        },
+        "sandbox_id": _sandbox_name(),
+    })
 
 
 # ---------------------------------------------------------------------------

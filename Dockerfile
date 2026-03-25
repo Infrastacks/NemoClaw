@@ -18,6 +18,10 @@ RUN groupadd -r sandbox && useradd -r -g sandbox -d /sandbox -s /bin/bash sandbo
     && mkdir -p /sandbox/.nemoclaw \
     && chown -R sandbox:sandbox /sandbox
 
+# Pre-built OpenShell binary (kernel-level policy enforcement)
+COPY deploy/prebuilt/openshell /usr/local/bin/openshell
+RUN chmod +x /usr/local/bin/openshell
+
 # Install Python dependencies for CAR + blueprint runner
 RUN pip3 install --break-system-packages \
     pyyaml \
