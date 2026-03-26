@@ -24,6 +24,10 @@ RUN chmod +x /usr/local/bin/ncp-transform-proxy /usr/local/bin/azure-transform-p
 COPY deploy/prebuilt/openshell /usr/local/bin/openshell
 RUN chmod +x /usr/local/bin/openshell
 
+# Pre-built PII policy proxy (HTTP reverse proxy with PII detection)
+COPY deploy/prebuilt/pii-policy-proxy /usr/local/bin/pii-policy-proxy
+RUN chmod +x /usr/local/bin/pii-policy-proxy
+
 # Pre-built telemetry agent (Codicera agent with heartbeat + log forwarding)
 COPY deploy/prebuilt-agent/ /opt/agent/
 

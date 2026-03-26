@@ -50,10 +50,33 @@ while [ $PROXY_TRIES -lt 6 ]; do
   sleep 0.5
 done
 
+# ── Start PII policy proxy ────────────────────────────────────────
+# HTTP reverse proxy with PII detection, sits between CAR and transform proxy.
+PII_POLICY_PATH="${PII_POLICY_PATH:-/sandbox/.nemoclaw/pii-policy.yaml}"
+PII_PROXY_PORT=9002
+PII_UPSTREAM_URL="http://127.0.0.1:${HEALTH_PORT}"
+export PII_POLICY_PATH PII_PROXY_PORT PII_UPSTREAM_URL
+
+/usr/local/bin/pii-policy-proxy 2>&1 | tee -a "$LOG_FILE" &
+PII_PROXY_PID=$!
+echo "PII policy proxy started (pid $PII_PROXY_PID) on :${PII_PROXY_PORT}"
+
+# Wait for PII proxy health (max 2s)
+PII_TRIES=0
+while [ $PII_TRIES -lt 4 ]; do
+  if curl -sf "http://127.0.0.1:${PII_PROXY_PORT}/healthz" > /dev/null 2>&1; then
+    echo "PII policy proxy healthy on 127.0.0.1:${PII_PROXY_PORT}"
+    break
+  fi
+  PII_TRIES=$((PII_TRIES + 1))
+  sleep 0.5
+done
+
 # ── Start CAR Agent API server ────────────────────────────────────
 # Replaces OpenClaw gateway. Serves REST/SSE on :18800.
 export CAR_DB_PATH="/var/lib/car/state.db"
-export INFERENCE_URL="${INFERENCE_URL:-http://127.0.0.1:${HEALTH_PORT}/v1/chat/completions}"
+# Route inference through PII proxy (9002) → transform proxy (HEALTH_PORT)
+export INFERENCE_URL="${INFERENCE_URL:-http://127.0.0.1:${PII_PROXY_PORT}/v1/chat/completions}"
 export INFERENCE_MODEL="${INFERENCE_MODEL:-${NEMOCLAW_MODEL:-default}}"
 export INFERENCE_API_KEY="${INFERENCE_API_KEY:-${AZURE_OPENAI_API_KEY:-${NVIDIA_API_KEY:-${OPENAI_API_KEY:-}}}}"
 
@@ -140,14 +163,14 @@ AGENT_PID=$!
 
 cleanup() {
   echo "Shutting down..."
-  kill $CAR_PID $INFERENCE_PROXY_PID $AGENT_PID 2>/dev/null || true
-  wait $CAR_PID $INFERENCE_PROXY_PID $AGENT_PID 2>/dev/null || true
+  kill $CAR_PID $INFERENCE_PROXY_PID $PII_PROXY_PID $AGENT_PID 2>/dev/null || true
+  wait $CAR_PID $INFERENCE_PROXY_PID $PII_PROXY_PID $AGENT_PID 2>/dev/null || true
   exit 0
 }
 trap cleanup TERM INT
 
 # Keep container alive as long as the Agent API server is running.
-echo "All services running (car=$CAR_PID, inference-proxy=$INFERENCE_PROXY_PID, agent=$AGENT_PID)"
+echo "All services running (car=$CAR_PID, inference-proxy=$INFERENCE_PROXY_PID, pii-proxy=$PII_PROXY_PID, agent=$AGENT_PID)"
 while kill -0 $CAR_PID 2>/dev/null; do
   sleep 2
 done
