@@ -7,6 +7,10 @@ echo "Starting NemoClaw runtime (v2 — CAR Agent API)..."
 mkdir -p /sandbox/.nemoclaw
 mkdir -p /var/lib/car
 mkdir -p /root/.nemoclaw
+
+# Container log file — tailed by agent sidecar for Live Logs in the console
+LOG_FILE="/sandbox/.nemoclaw/container.log"
+touch "$LOG_FILE"
 ln -sf /sandbox/.nemoclaw/events.jsonl /root/.nemoclaw/events.jsonl
 
 # Override hostname — K8s pod names exceed the 63-byte mDNS label limit
@@ -21,7 +25,7 @@ INFERENCE_PROXY_PID=""
 if [ "$PROVIDER_TYPE" = "azure" ]; then
   # Azure AI Foundry: auth conversion (Bearer→api-key) + URL rewriting
   export AZURE_UPSTREAM="${INFERENCE_ENDPOINT:-https://localhost}"
-  AZURE_PROXY_PORT=9001 /usr/local/bin/azure-transform-proxy &
+  AZURE_PROXY_PORT=9001 /usr/local/bin/azure-transform-proxy 2>&1 | tee -a "$LOG_FILE" &
   INFERENCE_PROXY_PID=$!
   echo "Azure transform proxy started (pid $INFERENCE_PROXY_PID)"
   HEALTH_PORT=9001
@@ -29,7 +33,7 @@ else
   # NVIDIA NCP: content array flattening, strict stripping, max_completion_tokens rename
   _raw="${INFERENCE_ENDPOINT:-https://integrate.api.nvidia.com/v1}"
   export NCP_UPSTREAM="${_raw%/v1}"
-  NCP_PROXY_PORT=9000 /usr/local/bin/ncp-transform-proxy &
+  NCP_PROXY_PORT=9000 /usr/local/bin/ncp-transform-proxy 2>&1 | tee -a "$LOG_FILE" &
   INFERENCE_PROXY_PID=$!
   echo "NCP transform proxy started (pid $INFERENCE_PROXY_PID)"
   HEALTH_PORT=9000
@@ -53,7 +57,7 @@ export INFERENCE_URL="${INFERENCE_URL:-http://127.0.0.1:${HEALTH_PORT}/v1/chat/c
 export INFERENCE_MODEL="${INFERENCE_MODEL:-${NEMOCLAW_MODEL:-default}}"
 export INFERENCE_API_KEY="${INFERENCE_API_KEY:-${AZURE_OPENAI_API_KEY:-${NVIDIA_API_KEY:-${OPENAI_API_KEY:-}}}}"
 
-python3 -m uvicorn server.app:app --host 0.0.0.0 --port 18800 --log-level info &
+python3 -m uvicorn server.app:app --host 0.0.0.0 --port 18800 --log-level info 2>&1 | tee -a "$LOG_FILE" &
 CAR_PID=$!
 echo "CAR Agent API server started (pid $CAR_PID) on :18800"
 
