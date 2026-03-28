@@ -177,7 +177,40 @@ export class CommandHandler {
             log.info("PII policy written for hot-reload", { path });
             return;
         }
-        // Non-PII policies: call openshell policy set
+        if (policy.type === "supply_chain") {
+            // Supply chain policies: write snake_case YAML for the sandbox proxy to read at startup.
+            // The proxy constructs a SupplyChainEngine from this file.
+            const spec = policy.spec;
+            const vt = (spec.vulnerabilityThresholds ?? {});
+            const lp = (spec.licensePolicy ?? {});
+            const scYaml = {
+                version: 1,
+                supply_chain: {
+                    enforcement: spec.enforcement ?? "audit",
+                    vulnerability_thresholds: {
+                        max_critical: vt.maxCritical ?? 0,
+                        max_high: vt.maxHigh ?? 5,
+                        block_unfixed_critical: vt.blockUnfixedCritical ?? false,
+                    },
+                    license_policy: {
+                        allowed: lp.allowed ?? [],
+                        denied: lp.denied ?? [],
+                    },
+                    denylist: Array.isArray(spec.denylist) ? spec.denylist : [],
+                    version_pinning: Array.isArray(spec.versionPinning) ? spec.versionPinning : [],
+                    osv_cache_ttl_hours: spec.osvCacheTtlHours ?? 4,
+                },
+            };
+            const yaml = jsonToYaml(scYaml);
+            const scPath = process.env.SUPPLY_CHAIN_POLICY_PATH || "/sandbox/.nemoclaw/supply-chain-policy.yaml";
+            const tmpSc = scPath + ".tmp";
+            mkdirSync(dirname(scPath), { recursive: true });
+            await writeFile(tmpSc, yaml, "utf-8");
+            await rename(tmpSc, scPath);
+            log.info("Supply chain policy written", { path: scPath });
+            return;
+        }
+        // Non-PII/supply-chain policies: call openshell policy set
         const policyYaml = { version: 1 };
         policyYaml[policy.type] = policy.spec;
         const yaml = jsonToYaml(policyYaml);
