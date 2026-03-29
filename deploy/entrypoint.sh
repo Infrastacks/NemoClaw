@@ -122,7 +122,10 @@ fi
 # Health check on :3129.
 echo "[entrypoint] Starting OpenShell CONNECT proxy..."
 
-/usr/local/bin/openshell \
+# OPENSHELL_NO_NETNS=1: skip network namespace creation (requires CAP_NET_ADMIN
+# + CAP_SYS_ADMIN + iproute2). Enforcement is cooperative via HTTP_PROXY env vars.
+# This is safe for managed containers with no direct user shell access.
+OPENSHELL_NO_NETNS=1 /usr/local/bin/openshell \
   --policy-rules /opt/openshell/sandbox-policy.rego \
   --policy-data /sandbox/.nemoclaw/sandbox-policy.yaml \
   --health-check \
