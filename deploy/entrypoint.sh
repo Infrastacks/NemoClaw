@@ -248,6 +248,7 @@ echo "Connecting agent to: $AGENT_WS (sandbox: ${SANDBOX_ID:-unknown})"
 node /opt/agent/index.js \
   --sandbox-id "${SANDBOX_ID:-unknown}" \
   --api-url "$AGENT_WS" \
+  --nemoclaw-url "http://127.0.0.1:18800" \
   --events-path /sandbox/.nemoclaw/events.jsonl &
 AGENT_PID=$!
 
