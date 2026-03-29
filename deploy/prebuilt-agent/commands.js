@@ -1,8 +1,6 @@
 import { execFile } from "node:child_process";
-import { writeFile, unlink, rename } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join, dirname } from "node:path";
-import { randomBytes } from "node:crypto";
+import { writeFile, readFile, rename } from "node:fs/promises";
+import { dirname } from "node:path";
 import { mkdirSync } from "node:fs";
 import { log } from "./logger.js";
 /** Serial async mutex — commands execute one at a time */
@@ -163,23 +161,17 @@ export class CommandHandler {
             }
         }
     }
-    /** Apply a policy by writing a YAML file for the PII proxy or calling openshell for other types. */
+    /**
+     * Apply a policy update to the running sandbox.
+     *
+     * - PII → merge into sandbox-policy.yaml pii section + restart OpenShell
+     * - Supply chain → write separate file (OpenShell re-reads per tunnel, no restart)
+     * - Network/other → merge into sandbox-policy.yaml network_policies + restart OpenShell
+     */
     async applyPolicyLocal(policy) {
-        if (policy.type === "pii") {
-            // PII policies: write YAML directly — the pii-policy-proxy hot-reloads from this file.
-            const policyYaml = { version: 1, pii: policy.spec };
-            const yaml = jsonToYaml(policyYaml);
-            const path = process.env.PII_POLICY_PATH || "/sandbox/.nemoclaw/pii-policy.yaml";
-            const tmpPath = path + ".tmp";
-            mkdirSync(dirname(path), { recursive: true });
-            await writeFile(tmpPath, yaml, "utf-8");
-            await rename(tmpPath, path);
-            log.info("PII policy written for hot-reload", { path });
-            return;
-        }
         if (policy.type === "supply_chain") {
-            // Supply chain policies: write snake_case YAML for the sandbox proxy to read at startup.
-            // The proxy constructs a SupplyChainEngine from this file.
+            // Supply chain: write snake_case YAML. OpenShell re-reads this file per tunnel
+            // (proxy.rs:561-589), so no restart is needed for supply chain policy changes.
             const spec = policy.spec;
             const vt = (spec.vulnerabilityThresholds ?? {});
             const lp = (spec.licensePolicy ?? {});
@@ -210,29 +202,75 @@ export class CommandHandler {
             log.info("Supply chain policy written", { path: scPath });
             return;
         }
-        // Non-PII/supply-chain policies: call openshell policy set
-        const policyYaml = { version: 1 };
-        policyYaml[policy.type] = policy.spec;
-        const yaml = jsonToYaml(policyYaml);
-        const tmpPath = join(tmpdir(), `policy-${randomBytes(6).toString("hex")}.yaml`);
-        await writeFile(tmpPath, yaml, "utf-8");
-        try {
-            await new Promise((resolve, reject) => {
-                execFile("openshell", ["policy", "set", policy.name, "--policy", tmpPath], { timeout: 30_000 }, (err, stdout, stderr) => {
-                    if (err) {
-                        reject(new Error(`openshell policy set failed: ${stderr || err.message}`));
-                    }
-                    else {
-                        if (stdout)
-                            log.debug("openshell stdout", { output: stdout.trim() });
-                        resolve();
-                    }
-                });
+        if (policy.type === "pii") {
+            // PII: merge into the sandbox policy's pii section. The OPA engine loads pii
+            // config once at startup, so we must restart OpenShell after updating.
+            await this.mergePolicySection("pii", policy.spec);
+            await this.restartOpenShell();
+            log.info("PII policy merged + OpenShell restarted");
+            return;
+        }
+        // Network/other: merge into sandbox-policy.yaml network_policies section.
+        // OPA engine loads network policies once at startup → restart required.
+        await this.mergeNetworkPolicy(policy.name, policy.spec);
+        await this.restartOpenShell();
+        log.info("Network policy merged + OpenShell restarted", { name: policy.name });
+    }
+    /**
+     * Merge a top-level section (e.g. "pii") into the sandbox policy.
+     * Reads the JSON sidecar, updates the section, writes both JSON + YAML atomically.
+     */
+    async mergePolicySection(section, spec) {
+        const { jsonPath, yamlPath } = this.policyPaths();
+        const policy = await this.readPolicyJson(jsonPath);
+        policy[section] = spec;
+        await this.writePolicyFiles(policy, jsonPath, yamlPath);
+    }
+    /**
+     * Merge a named network policy (or policy with network_policies key) into the sandbox policy.
+     */
+    async mergeNetworkPolicy(name, spec) {
+        const { jsonPath, yamlPath } = this.policyPaths();
+        const policy = await this.readPolicyJson(jsonPath);
+        const np = (policy.network_policies ?? {});
+        const s = spec;
+        if (s && "network_policies" in s) {
+            Object.assign(np, s.network_policies);
+        }
+        else if (s && "endpoints" in s) {
+            np[name] = s;
+        }
+        policy.network_policies = np;
+        await this.writePolicyFiles(policy, jsonPath, yamlPath);
+    }
+    policyPaths() {
+        return {
+            jsonPath: "/sandbox/.nemoclaw/sandbox-policy.json",
+            yamlPath: "/sandbox/.nemoclaw/sandbox-policy.yaml",
+        };
+    }
+    async readPolicyJson(jsonPath) {
+        const raw = await readFile(jsonPath, "utf-8");
+        return JSON.parse(raw);
+    }
+    async writePolicyFiles(policy, jsonPath, yamlPath) {
+        // Write JSON sidecar (atomic)
+        await writeFile(jsonPath + ".tmp", JSON.stringify(policy), "utf-8");
+        await rename(jsonPath + ".tmp", jsonPath);
+        // Write YAML for OpenShell (atomic)
+        await writeFile(yamlPath + ".tmp", jsonToYaml(policy), "utf-8");
+        await rename(yamlPath + ".tmp", yamlPath);
+    }
+    /** Restart the OpenShell CONNECT proxy to pick up policy changes. */
+    restartOpenShell() {
+        return new Promise((resolve, reject) => {
+            execFile("/usr/local/bin/restart-openshell.sh", [], { timeout: 30_000 }, (err, _stdout, stderr) => {
+                if (err)
+                    reject(new Error(`OpenShell restart failed: ${stderr || err.message}`));
+                else
+                    resolve();
             });
-        }
-        finally {
-            await unlink(tmpPath).catch(() => { });
-        }
+        });
     }
     sendStatus(from, to) {
         this.connection.send({
