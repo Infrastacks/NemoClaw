@@ -17,7 +17,7 @@ RUN adduser -D -H -s /sbin/nologin sandbox
 # Install CAR from local source (or private repo via BuildKit secret)
 COPY car/ /opt/car-src/
 RUN apk add --no-cache --virtual .build-deps build-base postgresql-dev \
-    && pip install --no-cache-dir /opt/car-src/ pyyaml \
+    && pip install --no-cache-dir "/opt/car-src/[autogen,langgraph]" pyyaml \
     && apk del .build-deps \
     && apk add --no-cache libpq
 

@@ -123,7 +123,7 @@ export class CommandHandler {
                 return;
             }
         }
-        await this.handleStart(blueprintId);
+        await this.handleStart(blueprintId, credentials);
     }
     async handleUpdateBlueprint(blueprintId) {
         const { currentRunId, currentStatus } = this.state.get();
