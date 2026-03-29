@@ -1,12 +1,13 @@
 #!/bin/sh
 set -e
 
-echo "Starting NemoClaw runtime (v2 — CAR Agent API)..."
+echo "Starting NemoClaw runtime (v3 — OpenShell CONNECT proxy)..."
 
 # Ensure directories exist
 mkdir -p /sandbox/.nemoclaw
 mkdir -p /var/lib/car
 mkdir -p /root/.nemoclaw
+mkdir -p /var/run
 
 # Container log file — tailed by agent sidecar for Live Logs in the console
 LOG_FILE="/sandbox/.nemoclaw/container.log"
@@ -17,8 +18,161 @@ ln -sf /sandbox/.nemoclaw/events.jsonl /root/.nemoclaw/events.jsonl
 hostname "${SANDBOX_ID:-nemoclaw}" 2>/dev/null || true
 export HOSTNAME="${SANDBOX_ID:-nemoclaw}"
 
+# ── Assemble OpenShell policy from CODICERA_POLICIES ─────────────
+# Merges base policy with dynamic policies from the backend.
+# - Network policies → merge into network_policies section
+# - PII policies → replace pii section
+# - Supply chain → write to separate file (per-tunnel hot-reload)
+# Output: /sandbox/.nemoclaw/sandbox-policy.yaml
+
+# Copy base policy as starting point
+cp /opt/openshell/nemoclaw-policy.yaml /sandbox/.nemoclaw/sandbox-policy.yaml
+
+if [ -n "${CODICERA_POLICIES:-}" ]; then
+  echo "Assembling policies from CODICERA_POLICIES..."
+  echo "$CODICERA_POLICIES" | base64 -d | python3 -c "
+import json, sys, os
+try:
+    import yaml
+except ImportError:
+    yaml = None
+
+policies = json.load(sys.stdin)
+
+# Load the base policy
+with open('/sandbox/.nemoclaw/sandbox-policy.yaml', 'r') as f:
+    if yaml:
+        base = yaml.safe_load(f)
+    else:
+        # Fallback: just use base as-is, skip merging
+        print('WARNING: PyYAML not available, skipping policy assembly')
+        sys.exit(0)
+
+if base is None:
+    base = {}
+if 'network_policies' not in base:
+    base['network_policies'] = {}
+
+applied = 0
+failed = 0
+for p in policies:
+    try:
+        ptype = p.get('type', 'network')
+        spec = p.get('spec', {})
+
+        if ptype == 'pii':
+            # PII: replace pii section in base policy
+            base['pii'] = spec
+            print(f'Policy {p[\"name\"]}: merged pii config')
+
+        elif ptype == 'supply_chain':
+            # Supply chain: write to separate file (OpenShell reads per-tunnel)
+            sc_data = {'version': 1, 'supply_chain': spec}
+            sc_path = os.environ.get('SUPPLY_CHAIN_POLICY_PATH',
+                                     '/sandbox/.nemoclaw/supply-chain-policy.yaml')
+            tmp = sc_path + '.tmp'
+            with open(tmp, 'w') as f:
+                yaml.dump(sc_data, f, default_flow_style=False)
+            os.rename(tmp, sc_path)
+            print(f'Policy {p[\"name\"]}: wrote supply chain to {sc_path}')
+
+        else:
+            # Network / filesystem / other: merge into base
+            if 'network_policies' in spec:
+                base['network_policies'].update(spec['network_policies'])
+            elif 'endpoints' in spec:
+                base['network_policies'][p['name']] = spec
+            # Also merge filesystem_policy if present
+            if 'filesystem_policy' in spec:
+                base['filesystem_policy'] = spec['filesystem_policy']
+            print(f'Policy {p[\"name\"]}: merged into base')
+
+        applied += 1
+    except Exception as e:
+        failed += 1
+        print(f'Policy {p[\"name\"]}: error ({e})')
+
+# Write assembled policy
+tmp = '/sandbox/.nemoclaw/sandbox-policy.yaml.tmp'
+with open(tmp, 'w') as f:
+    yaml.dump(base, f, default_flow_style=False)
+os.rename(tmp, '/sandbox/.nemoclaw/sandbox-policy.yaml')
+print(f'Policies: {applied} applied, {failed} failed')
+
+# Also write JSON sidecar for agent hot-reload (avoids YAML parsing in Node.js)
+with open('/sandbox/.nemoclaw/sandbox-policy.json', 'w') as f:
+    json.dump(base, f)
+" 2>&1
+fi
+
+# Ensure JSON sidecar exists (for base-only case when CODICERA_POLICIES is empty)
+if [ ! -f /sandbox/.nemoclaw/sandbox-policy.json ]; then
+  python3 -c "
+import yaml, json
+with open('/sandbox/.nemoclaw/sandbox-policy.yaml') as f:
+    data = yaml.safe_load(f) or {}
+with open('/sandbox/.nemoclaw/sandbox-policy.json', 'w') as f:
+    json.dump(data, f)
+"
+fi
+
+# ── Start OpenShell CONNECT proxy ────────────────────────────────
+# L7 inspection: supply chain scanning + PII detection on ALL egress.
+# Listens on 127.0.0.1:3128 (CONNECT proxy).
+# Health check on :3129.
+echo "[entrypoint] Starting OpenShell CONNECT proxy..."
+
+/usr/local/bin/openshell \
+  --policy-rules /opt/openshell/sandbox-policy.rego \
+  --policy-data /sandbox/.nemoclaw/sandbox-policy.yaml \
+  --health-check \
+  --health-port 3129 \
+  --log-level info \
+  -- sleep infinity 2>&1 | tee -a "$LOG_FILE" &
+OPENSHELL_PID=$!
+echo "$OPENSHELL_PID" > /var/run/openshell.pid
+echo "[entrypoint] OpenShell started (pid $OPENSHELL_PID)"
+
+# Wait for CA cert generation + proxy health (max 15s)
+OPENSHELL_TRIES=0
+while [ $OPENSHELL_TRIES -lt 30 ]; do
+  if [ -f /etc/openshell-tls/ca-bundle.pem ] && \
+     curl -sf http://127.0.0.1:3129/healthz > /dev/null 2>&1; then
+    echo "[entrypoint] OpenShell CONNECT proxy healthy on 127.0.0.1:3128"
+    break
+  fi
+  OPENSHELL_TRIES=$((OPENSHELL_TRIES + 1))
+  sleep 0.5
+done
+
+if [ $OPENSHELL_TRIES -ge 30 ]; then
+  echo "FATAL: OpenShell CONNECT proxy did not become healthy within 15s" >&2
+  kill $OPENSHELL_PID 2>/dev/null || true
+  exit 1
+fi
+
+# ── Export TLS trust for downstream services ─────────────────────
+# OpenShell generates an ephemeral CA for TLS MITM inspection.
+# These env vars make all downstream HTTP clients (Go, Python, Node.js,
+# curl) trust the MITM certificates.
+export NODE_EXTRA_CA_CERTS="/etc/openshell-tls/openshell-ca.pem"
+export SSL_CERT_FILE="/etc/openshell-tls/ca-bundle.pem"
+export REQUESTS_CA_BUNDLE="/etc/openshell-tls/ca-bundle.pem"
+export CURL_CA_BUNDLE="/etc/openshell-tls/ca-bundle.pem"
+
+# ── Export HTTP proxy for all outbound traffic ───────────────────
+# All outbound HTTPS goes through OpenShell for L7 inspection.
+# NO_PROXY excludes local service-to-service traffic.
+export HTTP_PROXY="http://127.0.0.1:3128"
+export HTTPS_PROXY="http://127.0.0.1:3128"
+export http_proxy="http://127.0.0.1:3128"
+export https_proxy="http://127.0.0.1:3128"
+export NO_PROXY="127.0.0.1,localhost,::1"
+export no_proxy="127.0.0.1,localhost,::1"
+
 # ── Start inference transform proxy ───────────────────────────────
 # Each provider has its own proxy that rewrites requests for API compatibility.
+# Outbound calls from the transform proxy go through OpenShell via HTTP_PROXY.
 PROVIDER_TYPE="${INFERENCE_PROVIDER_TYPE:-ncp}"
 INFERENCE_PROXY_PID=""
 
@@ -50,33 +204,13 @@ while [ $PROXY_TRIES -lt 6 ]; do
   sleep 0.5
 done
 
-# ── Start PII policy proxy ────────────────────────────────────────
-# HTTP reverse proxy with PII detection, sits between CAR and transform proxy.
-PII_POLICY_PATH="${PII_POLICY_PATH:-/sandbox/.nemoclaw/pii-policy.yaml}"
-PII_PROXY_PORT=9002
-PII_UPSTREAM_URL="http://127.0.0.1:${HEALTH_PORT}"
-export PII_POLICY_PATH PII_PROXY_PORT PII_UPSTREAM_URL
-
-/usr/local/bin/pii-policy-proxy 2>&1 | tee -a "$LOG_FILE" &
-PII_PROXY_PID=$!
-echo "PII policy proxy started (pid $PII_PROXY_PID) on :${PII_PROXY_PORT}"
-
-# Wait for PII proxy health (max 2s)
-PII_TRIES=0
-while [ $PII_TRIES -lt 4 ]; do
-  if curl -sf "http://127.0.0.1:${PII_PROXY_PORT}/healthz" > /dev/null 2>&1; then
-    echo "PII policy proxy healthy on 127.0.0.1:${PII_PROXY_PORT}"
-    break
-  fi
-  PII_TRIES=$((PII_TRIES + 1))
-  sleep 0.5
-done
-
 # ── Start CAR Agent API server ────────────────────────────────────
 # Replaces OpenClaw gateway. Serves REST/SSE on :18800.
+# Inference goes to the transform proxy directly (PII is checked by
+# OpenShell when the transform proxy's outbound request hits the
+# CONNECT proxy).
 export CAR_DB_PATH="/var/lib/car/state.db"
-# Route inference through PII proxy (9002) → transform proxy (HEALTH_PORT)
-export INFERENCE_URL="${INFERENCE_URL:-http://127.0.0.1:${PII_PROXY_PORT}/v1/chat/completions}"
+export INFERENCE_URL="${INFERENCE_URL:-http://127.0.0.1:${HEALTH_PORT}/v1/chat/completions}"
 export INFERENCE_MODEL="${INFERENCE_MODEL:-${NEMOCLAW_MODEL:-default}}"
 export INFERENCE_API_KEY="${INFERENCE_API_KEY:-${AZURE_OPENAI_API_KEY:-${NVIDIA_API_KEY:-${OPENAI_API_KEY:-}}}}"
 
@@ -97,48 +231,6 @@ done
 
 if [ $CAR_TRIES -ge 20 ]; then
   echo "WARNING: CAR Agent API did not become healthy within 10s"
-fi
-
-# ── Apply Codicera policies via OpenShell ─────────────────────
-if [ -n "${CODICERA_POLICIES:-}" ]; then
-  echo "Applying Codicera policies via OpenShell..."
-  echo "$CODICERA_POLICIES" | base64 -d | python3 -c "
-import json, sys, subprocess, tempfile, os
-try:
-    import yaml
-except ImportError:
-    yaml = None
-
-policies = json.load(sys.stdin)
-applied = 0
-failed = 0
-for p in policies:
-    try:
-        if yaml:
-            fd, path = tempfile.mkstemp(suffix='.yaml')
-            with os.fdopen(fd, 'w') as f:
-                yaml.dump(p['spec'], f, default_flow_style=False)
-            result = subprocess.run(
-                ['openshell', 'policy', 'set', p['name'], '--policy', path],
-                capture_output=True, text=True, timeout=10
-            )
-            os.unlink(path)
-        else:
-            result = subprocess.run(
-                ['openshell', 'policy', 'set', '--name', p['name'], '--config', json.dumps(p['spec'])],
-                capture_output=True, text=True, timeout=10
-            )
-        if result.returncode == 0:
-            applied += 1
-            print(f'Policy {p[\"name\"]}: applied')
-        else:
-            failed += 1
-            print(f'Policy {p[\"name\"]}: failed ({result.stderr.strip()})')
-    except Exception as e:
-        failed += 1
-        print(f'Policy {p[\"name\"]}: error ({e})')
-print(f'Policies: {applied} applied, {failed} failed')
-" 2>&1
 fi
 
 # ── Start telemetry agent ─────────────────────────────────────────
@@ -163,14 +255,14 @@ AGENT_PID=$!
 
 cleanup() {
   echo "Shutting down..."
-  kill $CAR_PID $INFERENCE_PROXY_PID $PII_PROXY_PID $AGENT_PID 2>/dev/null || true
-  wait $CAR_PID $INFERENCE_PROXY_PID $PII_PROXY_PID $AGENT_PID 2>/dev/null || true
+  kill $CAR_PID $INFERENCE_PROXY_PID $OPENSHELL_PID $AGENT_PID 2>/dev/null || true
+  wait $CAR_PID $INFERENCE_PROXY_PID $OPENSHELL_PID $AGENT_PID 2>/dev/null || true
   exit 0
 }
 trap cleanup TERM INT
 
 # Keep container alive as long as the Agent API server is running.
-echo "All services running (car=$CAR_PID, inference-proxy=$INFERENCE_PROXY_PID, pii-proxy=$PII_PROXY_PID, agent=$AGENT_PID)"
+echo "All services running (car=$CAR_PID, inference-proxy=$INFERENCE_PROXY_PID, openshell=$OPENSHELL_PID, agent=$AGENT_PID)"
 while kill -0 $CAR_PID 2>/dev/null; do
   sleep 2
 done

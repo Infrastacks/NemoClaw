@@ -3,15 +3,15 @@
 #
 # Strict baseline policy for the OpenClaw sandbox.
 # Principle: deny by default, allow only what's needed for core functionality.
-# Dynamic updates (network_policies, inference) can be applied post-creation
-# via `openshell policy set`. Static fields are effectively creation-locked.
+# Dynamic updates are merged at startup from CODICERA_POLICIES and at runtime
+# via the agent's policy push (which restarts OpenShell to reload).
 #
 # Policy tiers (future):
 #   strict  — this file. Minimum for onboard + basic agent operation.
 #   relaxed — adds third-party model providers, broader web access.
 #
-# To add endpoints: update this file and re-run `openclaw nemoclaw migrate`
-# or apply dynamically via `openshell policy set`.
+# L7 inspection: endpoints with `tls: terminate` get full L7 inspection
+# (PII detection + supply chain scanning) via the OpenShell CONNECT proxy.
 
 version: 1
 
@@ -36,6 +36,12 @@ landlock:
 process:
   run_as_user: sandbox
   run_as_group: sandbox
+
+# ── PII detection (L7 inspection via OpenShell CONNECT proxy) ────
+# Defaults to audit mode; overridden by Codicera policy push.
+pii:
+  enforcement: audit
+  max_body_bytes: 1048576
 
 network_policies:
   claude_code:
@@ -79,6 +85,7 @@ network_policies:
     binaries:
       - { path: /usr/local/bin/claude }
       - { path: /usr/local/bin/openclaw }
+      - { path: /usr/local/bin/ncp-transform-proxy }
 
   azure_openai:
     name: azure_openai
@@ -96,6 +103,7 @@ network_policies:
     binaries:
       - { path: /usr/local/bin/claude }
       - { path: /usr/local/bin/openclaw }
+      - { path: /usr/local/bin/azure-transform-proxy }
 
   github:
     name: github
@@ -158,15 +166,45 @@ network_policies:
       - { path: /usr/local/bin/openclaw }
 
   # npm registry — needed for `openclaw plugins install` and `npm install`
+  # tls: terminate enables L7 supply chain scanning of npm packages.
   npm_registry:
     name: npm_registry
     endpoints:
       - host: registry.npmjs.org
         port: 443
-        access: full
+        protocol: rest
+        enforcement: enforce
+        tls: terminate
+        rules:
+          - allow: { method: GET, path: "/**" }
     binaries:
       - { path: /usr/local/bin/openclaw }
       - { path: /usr/local/bin/npm }
+      - { path: /usr/bin/node }
+
+  # ── PyPI — supply chain scanning for pip install ───────────────
+  # tls: terminate enables L7 inspection so detect_registry_pattern()
+  # identifies PyPI downloads for vulnerability + license checks.
+  pypi:
+    name: pypi
+    endpoints:
+      - host: pypi.org
+        port: 443
+        protocol: rest
+        enforcement: enforce
+        tls: terminate
+        rules:
+          - allow: { method: GET, path: "/**" }
+      - host: files.pythonhosted.org
+        port: 443
+        protocol: rest
+        enforcement: enforce
+        tls: terminate
+        rules:
+          - allow: { method: GET, path: "/**" }
+    binaries:
+      - { path: "/usr/local/bin/python*" }
+      - { path: /usr/bin/curl }
 
   # ── Messaging — pre-allowed for agent notifications ────────────
   # Telegram Bot API is open by default so the agent can send
