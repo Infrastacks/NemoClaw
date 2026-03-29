@@ -164,9 +164,9 @@ export class CommandHandler {
     /**
      * Apply a policy update to the running sandbox.
      *
-     * - PII → merge into sandbox-policy.yaml pii section + restart OpenShell
+     * - PII → merge into sandbox-policy.yaml pii section (hot-reloaded by file watcher)
      * - Supply chain → write separate file (OpenShell re-reads per tunnel, no restart)
-     * - Network/other → merge into sandbox-policy.yaml network_policies + restart OpenShell
+     * - Network/other → merge into sandbox-policy.yaml network_policies (hot-reloaded by file watcher)
      */
     async applyPolicyLocal(policy) {
         if (policy.type === "supply_chain") {
@@ -203,18 +203,16 @@ export class CommandHandler {
             return;
         }
         if (policy.type === "pii") {
-            // PII: merge into the sandbox policy's pii section. The OPA engine loads pii
-            // config once at startup, so we must restart OpenShell after updating.
+            // PII: merge into the sandbox policy's pii section. OpenShell's file watcher
+            // detects the mtime change and hot-reloads the OPA engine within ~2 seconds.
             await this.mergePolicySection("pii", policy.spec);
-            await this.restartOpenShell();
-            log.info("PII policy merged + OpenShell restarted");
+            log.info("PII policy merged (hot-reload via file watcher)");
             return;
         }
         // Network/other: merge into sandbox-policy.yaml network_policies section.
-        // OPA engine loads network policies once at startup → restart required.
+        // OpenShell's file watcher hot-reloads the OPA engine on mtime change.
         await this.mergeNetworkPolicy(policy.name, policy.spec);
-        await this.restartOpenShell();
-        log.info("Network policy merged + OpenShell restarted", { name: policy.name });
+        log.info("Network policy merged (hot-reload via file watcher)", { name: policy.name });
     }
     /**
      * Merge a top-level section (e.g. "pii") into the sandbox policy.
