@@ -206,6 +206,24 @@ network_policies:
       - { path: "/usr/local/bin/python*" }
       - { path: /usr/bin/curl }
 
+  # ── OSV vulnerability database — required for supply chain scanning ──
+  # The openshell-supply-chain engine queries api.osv.dev to check packages
+  # for known vulnerabilities. Without this, vuln counts always read 0.
+  osv:
+    name: osv
+    endpoints:
+      - host: api.osv.dev
+        port: 443
+        protocol: rest
+        enforcement: enforce
+        tls: terminate
+        rules:
+          - allow: { method: POST, path: "/v1/query" }
+          - allow: { method: POST, path: "/v1/querybatch" }
+    binaries:
+      - { path: /usr/local/bin/openshell }
+      - { path: "/usr/local/bin/python*" }
+
   # ── Messaging — pre-allowed for agent notifications ────────────
   # Telegram Bot API is open by default so the agent can send
   # notifications and respond to chats without triggering approval.
