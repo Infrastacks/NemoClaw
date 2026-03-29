@@ -119,7 +119,7 @@ fi
 # ── Start OpenShell CONNECT proxy ────────────────────────────────
 # L7 inspection: supply chain scanning + PII detection on ALL egress.
 # Listens on 127.0.0.1:3128 (CONNECT proxy).
-# Health check on :3129.
+# Health check on :3129, readiness: CA cert + /healthz 200.
 echo "[entrypoint] Starting OpenShell CONNECT proxy..."
 
 # OPENSHELL_NO_NETNS=1: skip network namespace creation (requires CAP_NET_ADMIN
@@ -136,7 +136,7 @@ OPENSHELL_PID=$!
 echo "$OPENSHELL_PID" > /var/run/openshell.pid
 echo "[entrypoint] OpenShell started (pid $OPENSHELL_PID)"
 
-# Wait for CA cert generation + proxy health (max 15s)
+# Wait for CA cert generation + health endpoint (max 15s)
 OPENSHELL_TRIES=0
 while [ $OPENSHELL_TRIES -lt 30 ]; do
   if [ -f /etc/openshell-tls/ca-bundle.pem ] && \
