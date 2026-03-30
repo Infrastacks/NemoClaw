@@ -9,6 +9,8 @@
 
 set -euo pipefail
 
+OPEN_SHELL_REPO="${NEMOCLAW_OPEN_SHELL_REPO:-Infrastacks/OpenShell}"
+
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
@@ -337,11 +339,11 @@ install_openshell() {
 
   tmpdir="$(mktemp -d)"
   if command -v gh > /dev/null 2>&1; then
-    GH_TOKEN="${GITHUB_TOKEN:-}" gh release download --repo NVIDIA/OpenShell \
+    GH_TOKEN="${GITHUB_TOKEN:-}" gh release download --repo "$OPEN_SHELL_REPO" \
       --pattern "$ASSET" --dir "$tmpdir"
   else
     # Fallback: curl latest release
-    curl -fsSL "https://github.com/NVIDIA/OpenShell/releases/latest/download/$ASSET" \
+    curl -fsSL "https://github.com/${OPEN_SHELL_REPO}/releases/latest/download/$ASSET" \
       -o "$tmpdir/$ASSET"
   fi
 

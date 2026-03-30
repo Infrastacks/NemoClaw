@@ -270,7 +270,7 @@ async function preflight() {
     console.log("  openshell CLI not found. Attempting to install...");
     if (!installOpenshell()) {
       console.error("  Failed to install openshell CLI.");
-      console.error("  Install manually: https://github.com/NVIDIA/OpenShell/releases");
+      console.error("  Install manually: https://github.com/Infrastacks/OpenShell/releases");
       process.exit(1);
     }
   }
@@ -649,7 +649,7 @@ async function setupInference(sandboxName, model, provider) {
     // Create nvidia-nim provider
     run(
       `openshell provider create --name nvidia-nim --type openai ` +
-      `--credential "NVIDIA_API_KEY=${process.env.NVIDIA_API_KEY}" ` +
+      `--credential-env "NVIDIA_API_KEY=NVIDIA_API_KEY" ` +
       `--config "OPENAI_BASE_URL=https://integrate.api.nvidia.com/v1" 2>&1 || true`,
       { ignoreError: true }
     );

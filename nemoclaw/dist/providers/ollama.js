@@ -101,6 +101,9 @@ exports.ollamaProvider = {
             credential_default: "ollama",
         };
     },
+    toOpenShellProviderConfig(apiKey, endpointUrl) {
+        return (0, interface_js_1.createOpenShellProviderConfig)("openai", this.credentialEnvVar, apiKey, endpointUrl);
+    },
     describeProvider() {
         return "Local Ollama";
     },

@@ -30,6 +30,8 @@ esac
 
 info "Detected $OS_LABEL ($ARCH_LABEL)"
 
+OPEN_SHELL_REPO="${NEMOCLAW_OPEN_SHELL_REPO:-Infrastacks/OpenShell}"
+
 if command -v openshell > /dev/null 2>&1; then
   info "openshell already installed: $(openshell --version 2>&1 || echo 'unknown')"
   exit 0
@@ -56,10 +58,10 @@ tmpdir="$(mktemp -d)"
 trap 'rm -rf "$tmpdir"' EXIT
 
 if command -v gh > /dev/null 2>&1; then
-  GH_TOKEN="${GITHUB_TOKEN:-}" gh release download --repo NVIDIA/OpenShell \
+  GH_TOKEN="${GITHUB_TOKEN:-}" gh release download --repo "$OPEN_SHELL_REPO" \
     --pattern "$ASSET" --dir "$tmpdir"
 else
-  curl -fsSL "https://github.com/NVIDIA/OpenShell/releases/latest/download/$ASSET" \
+  curl -fsSL "https://github.com/${OPEN_SHELL_REPO}/releases/latest/download/$ASSET" \
     -o "$tmpdir/$ASSET"
 fi
 

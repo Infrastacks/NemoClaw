@@ -1,0 +1,186 @@
+"use strict";
+// SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+// SPDX-License-Identifier: Apache-2.0
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.nimProvider = exports.NIM_CURATED_MODELS = void 0;
+exports.clearCatalogCache = clearCatalogCache;
+exports.fetchNimCatalog = fetchNimCatalog;
+const interface_js_1 = require("./interface.js");
+const validate_js_1 = require("../onboard/validate.js");
+const prompt_js_1 = require("../onboard/prompt.js");
+// ---------------------------------------------------------------------------
+// Catalog cache — 5-minute TTL
+// ---------------------------------------------------------------------------
+const CATALOG_TTL_MS = 5 * 60 * 1000;
+const catalogCache = new Map();
+function getCachedCatalog(cacheKey) {
+    const entry = catalogCache.get(cacheKey);
+    if (!entry)
+        return null;
+    if (Date.now() - entry.fetchedAt > CATALOG_TTL_MS) {
+        catalogCache.delete(cacheKey);
+        return null;
+    }
+    return entry.data;
+}
+function setCachedCatalog(cacheKey, models) {
+    catalogCache.set(cacheKey, { data: models, fetchedAt: Date.now() });
+}
+// Exposed for testing
+function clearCatalogCache() {
+    catalogCache.clear();
+}
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+const CLOUD_ENDPOINT = "https://integrate.api.nvidia.com/v1";
+function isCloudEndpoint(url) {
+    return url.includes("api.nvidia.com");
+}
+// ---------------------------------------------------------------------------
+// Curated NIM models (well-known models available on the NIM catalog)
+// ---------------------------------------------------------------------------
+exports.NIM_CURATED_MODELS = [
+    { id: "nvidia/nemotron-3-super-120b-a12b", label: "Nemotron 3 Super 120B" },
+    { id: "nvidia/llama-3.1-nemotron-ultra-253b-v1", label: "Nemotron Ultra 253B" },
+    { id: "nvidia/llama-3.3-nemotron-super-49b-v1.5", label: "Nemotron Super 49B v1.5" },
+    { id: "nvidia/nemotron-3-nano-30b-a3b", label: "Nemotron 3 Nano 30B" },
+];
+const DEFAULT_PLUGIN_MODELS = [
+    {
+        id: "nvidia/nemotron-3-super-120b-a12b",
+        label: "Nemotron 3 Super 120B (NIM)",
+        contextWindow: 131072,
+        maxOutput: 8192,
+    },
+    {
+        id: "nvidia/llama-3.1-nemotron-ultra-253b-v1",
+        label: "Nemotron Ultra 253B (NIM)",
+        contextWindow: 131072,
+        maxOutput: 4096,
+    },
+];
+// ---------------------------------------------------------------------------
+// NIM catalog fetcher
+// ---------------------------------------------------------------------------
+async function fetchNimCatalog(endpointUrl, apiKey) {
+    const cacheKey = `${endpointUrl}:${apiKey.slice(-8)}`;
+    const cached = getCachedCatalog(cacheKey);
+    if (cached)
+        return cached;
+    const modelsUrl = `${endpointUrl.replace(/\/+$/, "")}/models`;
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 10_000);
+    try {
+        const response = await fetch(modelsUrl, {
+            headers: { Authorization: `Bearer ${apiKey}` },
+            signal: controller.signal,
+        });
+        if (!response.ok)
+            return [];
+        const json = (await response.json());
+        const models = (json.data ?? []).map((m) => ({
+            id: m.id,
+            name: m.name ?? m.id,
+            license: m.license ?? "community",
+            versions: m.versions ?? [],
+        }));
+        setCachedCatalog(cacheKey, models);
+        return models;
+    }
+    catch {
+        return [];
+    }
+    finally {
+        clearTimeout(timeout);
+    }
+}
+// ---------------------------------------------------------------------------
+// NIM Provider
+// ---------------------------------------------------------------------------
+exports.nimProvider = {
+    id: "nim",
+    label: "NVIDIA NIM",
+    endpointTypes: ["nim", "nim-cloud"],
+    profileName: "nim",
+    providerName: "nvidia-nim",
+    credentialEnvVar: "NGC_API_KEY",
+    requiresApiKey: true,
+    defaultCredential: "",
+    defaultEndpoint: CLOUD_ENDPOINT,
+    providerType: "nvidia",
+    isLocal: false,
+    isExperimental: false,
+    curatedModels: exports.NIM_CURATED_MODELS,
+    requiredEnvVars: ["NGC_API_KEY"],
+    optionalEnvVars: ["NIM_VERSION"],
+    wizardHint() {
+        return "NVIDIA NIM — cloud or self-hosted inference";
+    },
+    async resolveEndpointUrl(ctx) {
+        if (ctx.endpointUrl) {
+            return ctx.endpointUrl.replace(/\/+$/, "");
+        }
+        if (ctx.endpointType === "nim-cloud") {
+            return CLOUD_ENDPOINT;
+        }
+        const input = await (0, prompt_js_1.promptInput)("NIM endpoint URL (e.g., https://integrate.api.nvidia.com/v1 or http://nim-host:8000/v1)", CLOUD_ENDPOINT);
+        return input.replace(/\/+$/, "");
+    },
+    async resolveExtraConfig() {
+        return {};
+    },
+    async discoverModels(apiKey, endpointUrl) {
+        // Use the catalog fetcher for cloud, or fall back to the standard models endpoint
+        if (isCloudEndpoint(endpointUrl)) {
+            const catalog = await fetchNimCatalog(endpointUrl, apiKey);
+            if (catalog.length > 0)
+                return catalog.map((m) => m.id);
+        }
+        // Self-hosted NIM or empty catalog: standard OpenAI-compatible /models
+        const result = await (0, validate_js_1.validateApiKey)(apiKey, endpointUrl);
+        return result.models;
+    },
+    buildModelOptions(discoveredModels) {
+        const curated = exports.NIM_CURATED_MODELS.filter((m) => discoveredModels.includes(m.id)).map((m) => ({
+            id: m.id,
+            label: `${m.label} (${m.id})`,
+        }));
+        if (curated.length > 0)
+            return curated;
+        // No curated match — return discovered models directly
+        if (discoveredModels.length > 0) {
+            return discoveredModels.map((id) => ({ id, label: id }));
+        }
+        return exports.NIM_CURATED_MODELS.map((m) => ({ id: m.id, label: `${m.label} (${m.id})` }));
+    },
+    defaultModelId(discoveredModels) {
+        const first = exports.NIM_CURATED_MODELS.find((m) => discoveredModels.includes(m.id));
+        return first?.id ?? discoveredModels[0] ?? exports.NIM_CURATED_MODELS[0].id;
+    },
+    async validateCredentials(apiKey, endpointUrl) {
+        const result = await (0, validate_js_1.validateApiKey)(apiKey, endpointUrl);
+        return result.valid;
+    },
+    toProviderPlugin(model, credentialEnv) {
+        return (0, interface_js_1.createProviderPlugin)(model, credentialEnv, DEFAULT_PLUGIN_MODELS);
+    },
+    toBlueprintProfile(model, credentialEnv) {
+        return {
+            provider_type: "nvidia",
+            provider_name: this.providerName,
+            endpoint: this.defaultEndpoint,
+            model,
+            credential_env: credentialEnv,
+        };
+    },
+    toOpenShellProviderConfig(apiKey, endpointUrl) {
+        return (0, interface_js_1.createOpenShellProviderConfig)("openai", this.credentialEnvVar, this.credentialEnvVar, endpointUrl, {
+            useEnvRef: true,
+        });
+    },
+    describeProvider() {
+        return "NVIDIA NIM";
+    },
+};
+//# sourceMappingURL=nim.js.map

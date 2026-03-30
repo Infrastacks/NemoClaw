@@ -1,1 +1,1 @@
-{"version":3,"file":"azure-openai.d.ts","sourceRoot":"","sources":["../../src/providers/azure-openai.ts"],"names":[],"mappings":"AAGA,OAAO,KAAK,EAAE,iBAAiB,EAA0C,MAAM,gBAAgB,CAAC;AAIhG,eAAO,MAAM,mBAAmB,EAAE,iBAiGjC,CAAC"}
+{"version":3,"file":"azure-openai.d.ts","sourceRoot":"","sources":["../../src/providers/azure-openai.ts"],"names":[],"mappings":"AAGA,OAAO,KAAK,EAAE,iBAAiB,EAA0C,MAAM,gBAAgB,CAAC;AAKhG,eAAO,MAAM,mBAAmB,EAAE,iBAuGjC,CAAC"}

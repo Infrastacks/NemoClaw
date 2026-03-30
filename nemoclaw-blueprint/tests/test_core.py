@@ -376,6 +376,49 @@ def test_apply_returns_inference_config(monkeypatch, tmp_path):
     assert result["inference"]["endpoint"] == "http://localhost:8000/v1"
 
 
+def test_apply_uses_credential_env_for_secret_providers(monkeypatch, tmp_path):
+    """apply() passes credential env references instead of raw secret values."""
+    calls = []
+
+    def mock_run_cmd(args, **kwargs):
+        calls.append(args)
+        return type("R", (), {"returncode": 0, "stderr": ""})()
+
+    monkeypatch.setattr("orchestrator.core.run_cmd", mock_run_cmd)
+    monkeypatch.setattr("orchestrator.core.Path.home", lambda: tmp_path)
+    monkeypatch.setenv("NIM_API_KEY", "super-secret-key")
+
+    from orchestrator.core import apply
+
+    apply("local", VALID_BLUEPRINT)
+
+    provider_call = next(args for args in calls if args[:2] == ["openshell", "provider"])
+    assert "--credential-env" in provider_call
+    assert "OPENAI_API_KEY=NIM_API_KEY" in provider_call
+    assert "OPENAI_API_KEY=super-secret-key" not in provider_call
+
+
+def test_apply_redacts_provider_secret_in_errors(monkeypatch, tmp_path):
+    """apply() redacts provider secrets from surfaced subprocess errors."""
+    responses = iter(
+        [
+            type("R", (), {"returncode": 0, "stderr": ""})(),
+            type("R", (), {"returncode": 1, "stderr": "bad key super-secret-key"})(),
+        ]
+    )
+    monkeypatch.setattr("orchestrator.core.Path.home", lambda: tmp_path)
+    monkeypatch.setattr("orchestrator.core.run_cmd", lambda *a, **kw: next(responses))
+    monkeypatch.setenv("NIM_API_KEY", "super-secret-key")
+
+    from orchestrator.core import apply
+
+    with pytest.raises(RunnerError) as exc_info:
+        apply("local", VALID_BLUEPRINT)
+
+    assert "[REDACTED]" in exc_info.value.message
+    assert "super-secret-key" not in exc_info.value.message
+
+
 # --- apply: policy application ---
 
 

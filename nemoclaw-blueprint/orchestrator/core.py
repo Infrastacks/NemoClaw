@@ -81,6 +81,14 @@ def openshell_available() -> bool:
     return shutil.which("openshell") is not None
 
 
+def _redact_secrets(text: str | None, secrets: list[str]) -> str:
+    redacted = text or ""
+    for secret in secrets:
+        if secret:
+            redacted = redacted.replace(secret, "[REDACTED]")
+    return redacted
+
+
 def _plans_dir() -> Path:
     """Directory for saved plans."""
     return Path.home() / ".nemoclaw" / "state" / "plans"
@@ -358,14 +366,16 @@ def _apply_inner(
         "--type",
         provider_type,
     ]
-    if credential:
+    if credential_env and os.environ.get(credential_env):
+        provider_args.extend(["--credential-env", f"OPENAI_API_KEY={credential_env}"])
+    elif credential:
         provider_args.extend(["--credential", f"OPENAI_API_KEY={credential}"])
     if endpoint:
         provider_args.extend(["--config", f"OPENAI_BASE_URL={endpoint}"])
 
     provider_result = run_cmd(provider_args, check=False, capture=True)
     if provider_result.returncode != 0:
-        stderr = provider_result.stderr or ""
+        stderr = _redact_secrets(provider_result.stderr, [credential])
         if "already exists" in stderr.lower():
             update_args = [
                 "openshell",
@@ -373,7 +383,9 @@ def _apply_inner(
                 "update",
                 provider_name,
             ]
-            if credential:
+            if credential_env and os.environ.get(credential_env):
+                update_args.extend(["--credential-env", f"OPENAI_API_KEY={credential_env}"])
+            elif credential:
                 update_args.extend(["--credential", f"OPENAI_API_KEY={credential}"])
             if endpoint:
                 update_args.extend(["--config", f"OPENAI_BASE_URL={endpoint}"])
@@ -382,12 +394,12 @@ def _apply_inner(
             if update_result.returncode != 0:
                 raise RunnerError(
                     SUBPROCESS_FAILED,
-                    f"Failed to update provider: {update_result.stderr}",
+                    f"Failed to update provider: {_redact_secrets(update_result.stderr, [credential])}",
                 )
         else:
             raise RunnerError(
                 SUBPROCESS_FAILED,
-                f"Failed to create provider: {provider_result.stderr}",
+                f"Failed to create provider: {stderr}",
             )
 
     # Step 2.5: Apply policy additions (non-fatal — OpenShell may not support this yet)

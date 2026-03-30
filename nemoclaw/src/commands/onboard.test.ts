@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { PluginLogger, NemoClawConfig } from "../index.js";
 
 vi.mock("node:child_process", () => ({
@@ -59,6 +59,11 @@ const logger: PluginLogger = {
 beforeEach(() => {
   vi.resetAllMocks();
   fakeProviders.clear();
+  vi.stubEnv("HOME", `/tmp/nemoclaw-onboard-test-${Date.now()}-${Math.random().toString(16).slice(2)}`);
+});
+
+afterEach(() => {
+  vi.unstubAllEnvs();
 });
 
 describe("cliOnboard", () => {
@@ -92,7 +97,7 @@ describe("cliOnboard", () => {
       toBlueprintProfile: vi.fn(),
       toOpenShellProviderConfig: vi.fn(() => ({
         type: "openai",
-        credentials: { AZURE_OPENAI_API_KEY: "azure-key" },
+        credentialEnvRefs: { AZURE_OPENAI_API_KEY: "AZURE_OPENAI_API_KEY" },
         config: { OPENAI_BASE_URL: "https://my-resource.openai.azure.com" },
       })),
       describeProvider: () => "Azure OpenAI",
@@ -120,8 +125,8 @@ describe("cliOnboard", () => {
         "azure-openai",
         "--type",
         "openai",
-        "--credential",
-        "AZURE_OPENAI_API_KEY=azure-key",
+        "--credential-env",
+        "AZURE_OPENAI_API_KEY=AZURE_OPENAI_API_KEY",
         "--config",
         "OPENAI_BASE_URL=https://my-resource.openai.azure.com",
       ]),
@@ -159,7 +164,7 @@ describe("cliOnboard", () => {
       toBlueprintProfile: vi.fn(),
       toOpenShellProviderConfig: vi.fn(() => ({
         type: "openai",
-        credentials: { NVIDIA_API_KEY: "nvapi-test" },
+        credentialEnvRefs: { NVIDIA_API_KEY: "NVIDIA_API_KEY" },
         config: { OPENAI_BASE_URL: "https://integrate.api.nvidia.com/v1" },
       })),
       describeProvider: () => "NVIDIA Cloud API",
@@ -192,8 +197,8 @@ describe("cliOnboard", () => {
         "provider",
         "update",
         "nvidia-nim",
-        "--credential",
-        "NVIDIA_API_KEY=nvapi-test",
+        "--credential-env",
+        "NVIDIA_API_KEY=NVIDIA_API_KEY",
         "--config",
         "OPENAI_BASE_URL=https://integrate.api.nvidia.com/v1",
       ]),

@@ -65,8 +65,11 @@ class BlueprintApiClient {
     async listBlueprints() {
         return this.request("GET", "/v1/blueprints");
     }
+    async getBlueprint(version) {
+        return this.request("GET", `/v1/blueprints/${encodeURIComponent(version)}`);
+    }
     async describeBlueprint() {
-        return this.request("GET", "/v1/blueprints/current");
+        return this.getBlueprint("current");
     }
 }
 exports.BlueprintApiClient = BlueprintApiClient;

@@ -20,6 +20,7 @@ export declare class BlueprintApiClient {
     getRun(runId: string): Promise<RunStatusResponse>;
     rollback(runId: string): Promise<RollbackResponse>;
     listBlueprints(): Promise<BlueprintSummary[]>;
+    getBlueprint(version: string): Promise<BlueprintDescribeResponse>;
     describeBlueprint(): Promise<BlueprintDescribeResponse>;
 }
 //# sourceMappingURL=client.d.ts.map

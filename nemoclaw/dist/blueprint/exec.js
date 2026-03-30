@@ -3,11 +3,15 @@
 // SPDX-License-Identifier: Apache-2.0
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.tryApiBaseUrl = tryApiBaseUrl;
+exports.probeApiBaseUrl = probeApiBaseUrl;
+exports.resolveApiBaseUrl = resolveApiBaseUrl;
 exports.execBlueprintViaApi = execBlueprintViaApi;
 exports.execBlueprint = execBlueprint;
 const node_child_process_1 = require("node:child_process");
 const node_fs_1 = require("node:fs");
 const node_path_1 = require("node:path");
+const parse_js_1 = require("../telemetry/parse.js");
+const DEFAULT_API_BASE_URL = "http://127.0.0.1:18790";
 function failResult(action, message) {
     return { success: false, runId: "error", action, output: message, exitCode: 1 };
 }
@@ -18,12 +22,29 @@ function failResult(action, message) {
 function tryApiBaseUrl() {
     return process.env.NEMOCLAW_API_URL ?? null;
 }
+async function probeApiBaseUrl(baseUrl) {
+    const healthUrl = `${baseUrl.replace(/\/+$/, "")}/health`;
+    try {
+        const response = await fetch(healthUrl, { method: "GET" });
+        return response.ok;
+    }
+    catch {
+        return false;
+    }
+}
+async function resolveApiBaseUrl() {
+    const configuredUrl = tryApiBaseUrl();
+    if (configuredUrl) {
+        return (await probeApiBaseUrl(configuredUrl)) ? configuredUrl : null;
+    }
+    return (await probeApiBaseUrl(DEFAULT_API_BASE_URL)) ? DEFAULT_API_BASE_URL : null;
+}
 /**
  * Execute a blueprint action via the REST API instead of subprocess.
  * Dynamically imports BlueprintApiClient to avoid circular/eager loading.
  */
-async function execBlueprintViaApi(options, logger) {
-    const baseUrl = tryApiBaseUrl();
+async function execBlueprintViaApi(options, logger, baseUrlOverride) {
+    const baseUrl = baseUrlOverride ?? tryApiBaseUrl();
     if (!baseUrl) {
         return failResult(options.action, "NEMOCLAW_API_URL not set");
     }
@@ -92,10 +113,10 @@ async function execBlueprintViaApi(options, logger) {
     }
 }
 async function execBlueprint(options, logger) {
-    // When NEMOCLAW_API_URL is set, try API path first
-    if (tryApiBaseUrl()) {
-        logger.info(`Using API at ${tryApiBaseUrl()} for blueprint ${options.action}`);
-        const apiResult = await execBlueprintViaApi(options, logger);
+    const apiBaseUrl = await resolveApiBaseUrl();
+    if (apiBaseUrl) {
+        logger.info(`Using API at ${apiBaseUrl} for blueprint ${options.action}`);
+        const apiResult = await execBlueprintViaApi(options, logger, apiBaseUrl);
         if (apiResult.success) {
             return apiResult;
         }
@@ -121,6 +142,8 @@ async function execBlueprint(options, logger) {
     logger.info(`Running blueprint: ${options.action} (profile: ${options.profile})`);
     return new Promise((resolve) => {
         const chunks = [];
+        let lineBuffer = "";
+        let streamRunId;
         const proc = (0, node_child_process_1.spawn)("python3", args, {
             cwd: options.blueprintPath,
             env: {
@@ -131,8 +154,22 @@ async function execBlueprint(options, logger) {
             stdio: ["pipe", "pipe", "pipe"],
         });
         proc.stdout.on("data", (data) => {
-            const line = data.toString();
-            chunks.push(line);
+            const text = data.toString();
+            chunks.push(text);
+            if (options.onTelemetry) {
+                lineBuffer += text;
+                const lines = lineBuffer.split("\n");
+                lineBuffer = lines.pop() ?? "";
+                for (const line of lines) {
+                    const event = (0, parse_js_1.parseTelemetryLine)(line);
+                    if (event) {
+                        options.onTelemetry(event);
+                        if (event.eventType === "run.id" && typeof event.data.runId === "string") {
+                            streamRunId = event.data.runId;
+                        }
+                    }
+                }
+            }
         });
         proc.stderr.on("data", (data) => {
             const line = data.toString().trim();
@@ -141,10 +178,15 @@ async function execBlueprint(options, logger) {
         });
         proc.on("close", (code) => {
             const output = chunks.join("");
-            const runIdMatch = output.match(/^RUN_ID:(.+)$/m);
+            // Prefer run ID from telemetry stream; fall back to legacy regex
+            let runId = streamRunId;
+            if (!runId) {
+                const runIdMatch = output.match(/^RUN_ID:(.+)$/m);
+                runId = runIdMatch?.[1] ?? "unknown";
+            }
             resolve({
                 success: code === 0,
-                runId: runIdMatch?.[1] ?? "unknown",
+                runId,
                 action: options.action,
                 output,
                 exitCode: code ?? 1,

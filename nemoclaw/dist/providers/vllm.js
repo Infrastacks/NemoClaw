@@ -58,6 +58,9 @@ exports.vllmProvider = {
             credential_default: "dummy",
         };
     },
+    toOpenShellProviderConfig(apiKey, endpointUrl) {
+        return (0, interface_js_1.createOpenShellProviderConfig)("openai", this.credentialEnvVar, apiKey, endpointUrl);
+    },
     describeProvider() {
         return "Local vLLM";
     },

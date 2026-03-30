@@ -8,6 +8,8 @@ const config_js_1 = require("../onboard/config.js");
 const prompt_js_1 = require("../onboard/prompt.js");
 const validate_js_1 = require("../onboard/validate.js");
 const index_js_1 = require("../providers/index.js");
+const index_js_2 = require("../telemetry/index.js");
+const inference_js_1 = require("../telemetry/inference.js");
 function isExperimentalEnabled() {
     return process.env.NEMOCLAW_EXPERIMENTAL === "1";
 }
@@ -42,8 +44,25 @@ function execOpenShell(args) {
         stdio: ["pipe", "pipe", "pipe"],
     });
 }
+function appendProviderArgs(args, config) {
+    const nextArgs = [...args];
+    for (const [name, value] of Object.entries(config.credentials ?? {})) {
+        nextArgs.push("--credential", `${name}=${value}`);
+    }
+    for (const [name, value] of Object.entries(config.credentialEnvRefs ?? {})) {
+        nextArgs.push("--credential-env", `${name}=${value}`);
+    }
+    for (const [name, value] of Object.entries(config.config ?? {})) {
+        nextArgs.push("--config", `${name}=${value}`);
+    }
+    return nextArgs;
+}
+function redactSensitiveText(input, secrets) {
+    return secrets.filter(Boolean).reduce((current, secret) => current.split(secret).join("[REDACTED]"), input);
+}
 async function cliOnboard(opts) {
     const { logger } = opts;
+    const emitter = new index_js_2.TelemetryEmitter({ sinks: [new index_js_2.FileSink()] });
     const registry = (0, index_js_1.createDefaultRegistry)();
     // Resolve provider early for nonInteractive check
     const resolvedProvider = opts.endpoint ? registry.get(opts.endpoint) : undefined;
@@ -146,15 +165,17 @@ async function cliOnboard(opts) {
     // For local providers, validation is best-effort since the service may not be running yet.
     logger.info("");
     logger.info(`Validating ${provider.requiresApiKey ? "credential" : "endpoint"} against ${endpointUrl}...`);
-    const validateOpts = provider.providerType === "azure_openai"
-        ? (0, validate_js_1.azureValidateOptions)(apiKey, endpointUrl) : undefined;
-    const validation = await (0, validate_js_1.validateApiKey)(apiKey, endpointUrl, validateOpts);
-    if (!validation.valid) {
+    const telemetryCtx = { provider: provider.id, model: "", endpoint: endpointUrl, operation: "" };
+    const validationValid = await (0, inference_js_1.withInferenceTelemetry)(emitter, { ...telemetryCtx, operation: "validateCredentials" }, () => provider.validateCredentials(apiKey, endpointUrl));
+    const validationModels = validationValid || provider.id === "ollama"
+        ? await (0, inference_js_1.withInferenceTelemetry)(emitter, { ...telemetryCtx, operation: "discoverModels" }, () => provider.discoverModels(apiKey, endpointUrl))
+        : [];
+    if (!validationValid) {
         if (provider.isLocal) {
-            logger.warn(`Could not reach ${endpointUrl} (${validation.error ?? "unknown error"}). Continuing anyway — the service may not be running yet.`);
+            logger.warn(`Could not validate ${endpointUrl}. Continuing anyway — the service may not be running yet.`);
         }
         else {
-            logger.error(`API key validation failed: ${validation.error ?? "unknown error"}`);
+            logger.error("API key validation failed.");
             if (credentialEnv === "AZURE_OPENAI_API_KEY") {
                 logger.info("Check your key and endpoint in the Azure Portal under your OpenAI resource → Keys and Endpoint");
             }
@@ -165,7 +186,7 @@ async function cliOnboard(opts) {
         }
     }
     else {
-        logger.info(`${provider.requiresApiKey ? "Credential" : "Endpoint"} valid. ${String(validation.models.length)} model(s) available.`);
+        logger.info(`${provider.requiresApiKey ? "Credential" : "Endpoint"} valid. ${String(validationModels.length)} model(s) available.`);
     }
     // Step 5: Model Selection
     let model;
@@ -173,10 +194,7 @@ async function cliOnboard(opts) {
         model = opts.model;
     }
     else {
-        // Ollama discovers models via `ollama list`; others use validation response
-        const discoveredModels = provider.id === "ollama"
-            ? await provider.discoverModels(apiKey, endpointUrl)
-            : validation.models;
+        const discoveredModels = validationModels;
         let modelOptions = provider.buildModelOptions(discoveredModels);
         if (modelOptions.length === 0) {
             // Fallback to NVIDIA curated models when no discovered models available
@@ -230,46 +248,40 @@ async function cliOnboard(opts) {
     logger.info("");
     logger.info("Applying configuration...");
     // 8a: Create/update provider
+    const providerConfig = provider.toOpenShellProviderConfig(apiKey, endpointUrl);
+    const redact = (message) => redactSensitiveText(message, provider.requiresApiKey ? [apiKey] : []);
     try {
-        execOpenShell([
+        execOpenShell(appendProviderArgs([
             "provider",
             "create",
             "--name",
             providerName,
             "--type",
-            "openai",
-            "--credential",
-            `${credentialEnv}=${apiKey}`,
-            "--config",
-            `OPENAI_BASE_URL=${endpointUrl}`,
-        ]);
+            providerConfig.type,
+        ], providerConfig));
         logger.info(`Created provider: ${providerName}`);
     }
     catch (err) {
         const stderr = err instanceof Error && "stderr" in err ? String(err.stderr) : "";
         if (stderr.includes("AlreadyExists") || stderr.includes("already exists")) {
             try {
-                execOpenShell([
+                execOpenShell(appendProviderArgs([
                     "provider",
                     "update",
                     providerName,
-                    "--credential",
-                    `${credentialEnv}=${apiKey}`,
-                    "--config",
-                    `OPENAI_BASE_URL=${endpointUrl}`,
-                ]);
+                ], providerConfig));
                 logger.info(`Updated provider: ${providerName}`);
             }
             catch (updateErr) {
                 const updateStderr = updateErr instanceof Error && "stderr" in updateErr
                     ? String(updateErr.stderr)
                     : "";
-                logger.error(`Failed to update provider: ${updateStderr || String(updateErr)}`);
+                logger.error(`Failed to update provider: ${redact(updateStderr || String(updateErr))}`);
                 return;
             }
         }
         else {
-            logger.error(`Failed to create provider: ${stderr || String(err)}`);
+            logger.error(`Failed to create provider: ${redact(stderr || String(err))}`);
             return;
         }
     }
@@ -280,9 +292,15 @@ async function cliOnboard(opts) {
     }
     catch (err) {
         const stderr = err instanceof Error && "stderr" in err ? String(err.stderr) : "";
-        logger.error(`Failed to set inference route: ${stderr || String(err)}`);
+        logger.error(`Failed to set inference route: ${redact(stderr || String(err))}`);
         return;
     }
+    emitter.emit(index_js_2.INFERENCE_CONFIGURED, {
+        source: "inference",
+        provider: providerName,
+        model,
+        endpoint: endpointUrl,
+    });
     // 8c: Save config
     (0, config_js_1.saveOnboardConfig)({
         endpointType,

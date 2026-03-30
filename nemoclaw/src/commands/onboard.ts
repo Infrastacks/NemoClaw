@@ -73,10 +73,17 @@ function appendProviderArgs(
   for (const [name, value] of Object.entries(config.credentials ?? {})) {
     nextArgs.push("--credential", `${name}=${value}`);
   }
+  for (const [name, value] of Object.entries(config.credentialEnvRefs ?? {})) {
+    nextArgs.push("--credential-env", `${name}=${value}`);
+  }
   for (const [name, value] of Object.entries(config.config ?? {})) {
     nextArgs.push("--config", `${name}=${value}`);
   }
   return nextArgs;
+}
+
+function redactSensitiveText(input: string, secrets: string[]): string {
+  return secrets.filter(Boolean).reduce((current, secret) => current.split(secret).join("[REDACTED]"), input);
 }
 
 export async function cliOnboard(opts: OnboardOptions): Promise<void> {
@@ -306,6 +313,7 @@ export async function cliOnboard(opts: OnboardOptions): Promise<void> {
 
   // 8a: Create/update provider
   const providerConfig = provider.toOpenShellProviderConfig(apiKey, endpointUrl);
+  const redact = (message: string) => redactSensitiveText(message, provider.requiresApiKey ? [apiKey] : []);
   try {
     execOpenShell(appendProviderArgs([
       "provider",
@@ -332,11 +340,11 @@ export async function cliOnboard(opts: OnboardOptions): Promise<void> {
           updateErr instanceof Error && "stderr" in updateErr
             ? String((updateErr as { stderr: unknown }).stderr)
             : "";
-        logger.error(`Failed to update provider: ${updateStderr || String(updateErr)}`);
+        logger.error(`Failed to update provider: ${redact(updateStderr || String(updateErr))}`);
         return;
       }
     } else {
-      logger.error(`Failed to create provider: ${stderr || String(err)}`);
+      logger.error(`Failed to create provider: ${redact(stderr || String(err))}`);
       return;
     }
   }
@@ -348,7 +356,7 @@ export async function cliOnboard(opts: OnboardOptions): Promise<void> {
   } catch (err) {
     const stderr =
       err instanceof Error && "stderr" in err ? String((err as { stderr: unknown }).stderr) : "";
-    logger.error(`Failed to set inference route: ${stderr || String(err)}`);
+    logger.error(`Failed to set inference route: ${redact(stderr || String(err))}`);
     return;
   }
 

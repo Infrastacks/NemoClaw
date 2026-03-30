@@ -6,7 +6,7 @@
 #
 # Prerequisites:
 #   - Docker running (Colima, Docker Desktop, or native)
-#   - openshell CLI installed (pip install openshell @ git+https://github.com/NVIDIA/OpenShell.git)
+#   - openshell CLI installed from the InfraStacks OpenShell fork
 #   - NVIDIA_API_KEY set in environment (from build.nvidia.com)
 #
 # Usage:
@@ -41,14 +41,15 @@ fail() { echo -e "${RED}>>>${NC} $1"; exit 1; }
 upsert_provider() {
   local name="$1"
   local type="$2"
-  local credential="$3"
-  local config="$4"
+  local credential_flag="$3"
+  local credential="$4"
+  local config="$5"
 
   if openshell provider create --name "$name" --type "$type" \
-    --credential "$credential" \
+    "$credential_flag" "$credential" \
     --config "$config" 2>&1 | grep -q "AlreadyExists"; then
     openshell provider update "$name" \
-      --credential "$credential" \
+      "$credential_flag" "$credential" \
       --config "$config" > /dev/null
     info "Updated $name provider"
   else
@@ -78,7 +79,7 @@ if docker_host="$(detect_docker_host)"; then
 fi
 
 # Check prerequisites
-command -v openshell > /dev/null || fail "openshell CLI not found. Install the binary from https://github.com/NVIDIA/OpenShell/releases"
+command -v openshell > /dev/null || fail "openshell CLI not found. Install the binary from https://github.com/Infrastacks/OpenShell/releases"
 command -v docker > /dev/null || fail "docker not found"
 [ -n "${NVIDIA_API_KEY:-}" ] || fail "NVIDIA_API_KEY not set. Get one from build.nvidia.com"
 
@@ -122,7 +123,8 @@ info "Setting up inference providers..."
 upsert_provider \
   "nvidia-nim" \
   "openai" \
-  "NVIDIA_API_KEY=$NVIDIA_API_KEY" \
+  "--credential-env" \
+  "NVIDIA_API_KEY=NVIDIA_API_KEY" \
   "OPENAI_BASE_URL=https://integrate.api.nvidia.com/v1"
 
 # vllm-local (if vLLM is installed or running)
@@ -131,6 +133,7 @@ if check_local_provider_health "vllm-local" || python3 -c "import vllm" 2>/dev/n
   upsert_provider \
     "vllm-local" \
     "openai" \
+    "--credential" \
     "OPENAI_API_KEY=dummy" \
     "OPENAI_BASE_URL=$VLLM_LOCAL_BASE_URL"
 fi
@@ -152,6 +155,7 @@ if [ "$(uname -s)" = "Darwin" ]; then
     upsert_provider \
       "ollama-local" \
       "openai" \
+      "--credential" \
       "OPENAI_API_KEY=ollama" \
       "OPENAI_BASE_URL=$OLLAMA_LOCAL_BASE_URL"
   fi

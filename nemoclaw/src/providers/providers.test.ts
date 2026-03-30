@@ -453,7 +453,7 @@ describe("toOpenShellProviderConfig", () => {
       "https://integrate.api.nvidia.com/v1",
     );
     expect(config.type).toBe("openai");
-    expect(config.credentials).toEqual({ NVIDIA_API_KEY: "nvapi-test" });
+    expect(config.credentialEnvRefs).toEqual({ NVIDIA_API_KEY: "NVIDIA_API_KEY" });
     expect(config.config).toEqual({
       OPENAI_BASE_URL: "https://integrate.api.nvidia.com/v1",
     });
@@ -465,7 +465,7 @@ describe("toOpenShellProviderConfig", () => {
       "https://my-resource.openai.azure.com",
     );
     expect(config.type).toBe("openai");
-    expect(config.credentials).toEqual({ AZURE_OPENAI_API_KEY: "azure-key" });
+    expect(config.credentialEnvRefs).toEqual({ AZURE_OPENAI_API_KEY: "AZURE_OPENAI_API_KEY" });
     expect(config.config).toEqual({
       OPENAI_BASE_URL: "https://my-resource.openai.azure.com",
     });
