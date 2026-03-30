@@ -37,6 +37,7 @@ export interface InferenceProfileConfig {
 export interface OpenShellProviderConfig {
   type: string;
   credentials?: Record<string, string>;
+  credentialEnvRefs?: Record<string, string>;
   config?: Record<string, string>;
 }
 
@@ -101,10 +102,13 @@ export function createOpenShellProviderConfig(
   credentialKey: string,
   credentialValue: string,
   endpointUrl: string,
+  options?: { useEnvRef?: boolean },
 ): OpenShellProviderConfig {
+  const useEnvRef = options?.useEnvRef ?? false;
   return {
     type,
-    credentials: { [credentialKey]: credentialValue },
+    credentials: useEnvRef ? undefined : { [credentialKey]: credentialValue },
+    credentialEnvRefs: useEnvRef ? { [credentialKey]: credentialValue } : undefined,
     config: { OPENAI_BASE_URL: endpointUrl },
   };
 }

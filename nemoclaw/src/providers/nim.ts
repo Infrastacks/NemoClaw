@@ -228,7 +228,9 @@ export const nimProvider: InferenceProvider = {
   },
 
   toOpenShellProviderConfig(apiKey, endpointUrl) {
-    return createOpenShellProviderConfig("openai", this.credentialEnvVar, apiKey, endpointUrl);
+    return createOpenShellProviderConfig("openai", this.credentialEnvVar, this.credentialEnvVar, endpointUrl, {
+      useEnvRef: true,
+    });
   },
 
   describeProvider() {

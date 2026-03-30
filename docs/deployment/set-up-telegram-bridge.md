@@ -33,12 +33,13 @@ The Telegram bridge is an auxiliary service managed by `nemoclaw start`.
 Open Telegram and send `/newbot` to [@BotFather](https://t.me/BotFather).
 Follow the prompts to create a bot and receive a bot token.
 
-## Set the Environment Variable
+## Set the Environment Variables
 
-Export the bot token as an environment variable:
+Export the bot token and chat allowlist as environment variables:
 
 ```console
 $ export TELEGRAM_BOT_TOKEN=<your-bot-token>
+$ export ALLOWED_CHAT_IDS="123456789,987654321"
 ```
 
 ## Start Auxiliary Services
@@ -54,7 +55,7 @@ The `start` command launches the following services:
 - The Telegram bridge forwards messages between Telegram and the agent.
 - The cloudflared tunnel provides external access to the sandbox.
 
-The Telegram bridge starts only when the `TELEGRAM_BOT_TOKEN` environment variable is set.
+The Telegram bridge starts only when both `TELEGRAM_BOT_TOKEN` and `ALLOWED_CHAT_IDS` are set.
 
 ## Verify the Services
 
@@ -73,12 +74,14 @@ The bridge forwards the message to the OpenClaw agent inside the sandbox and ret
 
 ## Restrict Access by Chat ID
 
-To restrict which Telegram chats can interact with the agent, set the `ALLOWED_CHAT_IDS` environment variable to a comma-separated list of Telegram chat IDs:
+`ALLOWED_CHAT_IDS` is required. Set it to a comma-separated list of exact Telegram chat IDs:
 
 ```console
 $ export ALLOWED_CHAT_IDS="123456789,987654321"
 $ nemoclaw start
 ```
+
+Wildcard values such as `*` are rejected. Only explicitly listed chat IDs can interact with the bridge.
 
 ## Stop the Services
 

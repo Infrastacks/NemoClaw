@@ -11,7 +11,7 @@
 # What it does:
 #   1. Installs Docker (if missing)
 #   2. Installs NVIDIA Container Toolkit (if GPU present)
-#   3. Installs openshell CLI from GitHub release (binary, no Rust build)
+#   3. Installs openshell CLI from the InfraStacks OpenShell fork release
 #   4. Runs setup.sh
 
 set -euo pipefail
@@ -26,6 +26,7 @@ warn() { echo -e "${YELLOW}[brev]${NC} $1"; }
 fail() { echo -e "${RED}[brev]${NC} $1"; exit 1; }
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+OPEN_SHELL_REPO="${NEMOCLAW_OPEN_SHELL_REPO:-Infrastacks/OpenShell}"
 
 [ -n "${NVIDIA_API_KEY:-}" ] || fail "NVIDIA_API_KEY not set"
 
@@ -75,7 +76,7 @@ fi
 
 # --- 3. openshell CLI (binary release, not pip) ---
 if ! command -v openshell > /dev/null 2>&1; then
-  info "Installing openshell CLI from GitHub release..."
+  info "Installing openshell CLI from ${OPEN_SHELL_REPO} release..."
   if ! command -v gh > /dev/null 2>&1; then
     sudo apt-get update -qq > /dev/null 2>&1
     sudo apt-get install -y -qq gh > /dev/null 2>&1
@@ -87,7 +88,7 @@ if ! command -v openshell > /dev/null 2>&1; then
     *) fail "Unsupported architecture: $ARCH" ;;
   esac
   tmpdir="$(mktemp -d)"
-  GH_TOKEN="${GITHUB_TOKEN:-}" gh release download --repo NVIDIA/OpenShell \
+  GH_TOKEN="${GITHUB_TOKEN:-}" gh release download --repo "$OPEN_SHELL_REPO" \
     --pattern "$ASSET" --dir "$tmpdir"
   tar xzf "$tmpdir/$ASSET" -C "$tmpdir"
   sudo install -m 755 "$tmpdir/openshell" /usr/local/bin/openshell

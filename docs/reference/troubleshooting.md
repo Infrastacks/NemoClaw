@@ -96,6 +96,9 @@ $ kill <PID>
 If the process does not exit, use `kill -9 <PID>` to force-terminate it.
 Then retry onboarding.
 
+For local debugging only, you can opt into relaxed dashboard behavior inside the sandbox with `NEMOCLAW_ALLOW_INSECURE_CONTROL_UI=1` and `NEMOCLAW_AUTO_APPROVE_DEVICES=1`.
+Both flags are disabled by default and should not be used for normal operation.
+
 ## Onboarding
 
 ### Cgroup v2 errors during onboard

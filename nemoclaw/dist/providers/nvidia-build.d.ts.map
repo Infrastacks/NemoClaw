@@ -1,1 +1,1 @@
-{"version":3,"file":"nvidia-build.d.ts","sourceRoot":"","sources":["../../src/providers/nvidia-build.ts"],"names":[],"mappings":"AAIA,OAAO,KAAK,EAAE,iBAAiB,EAA0B,WAAW,EAAE,MAAM,gBAAgB,CAAC;AAI7F,eAAO,MAAM,cAAc,EAAE,WAAW,EAOvC,CAAC;AA6BF,eAAO,MAAM,mBAAmB,EAAE,iBAsEjC,CAAC"}
+{"version":3,"file":"nvidia-build.d.ts","sourceRoot":"","sources":["../../src/providers/nvidia-build.ts"],"names":[],"mappings":"AAIA,OAAO,KAAK,EAAE,iBAAiB,EAA0B,WAAW,EAAE,MAAM,gBAAgB,CAAC;AAI7F,eAAO,MAAM,cAAc,EAAE,WAAW,EAOvC,CAAC;AA6BF,eAAO,MAAM,mBAAmB,EAAE,iBA4EjC,CAAC"}

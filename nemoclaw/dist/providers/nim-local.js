@@ -57,6 +57,11 @@ exports.nimLocalProvider = {
             credential_env: credentialEnv,
         };
     },
+    toOpenShellProviderConfig(apiKey, endpointUrl) {
+        return (0, interface_js_1.createOpenShellProviderConfig)("openai", this.credentialEnvVar, this.credentialEnvVar, endpointUrl, {
+            useEnvRef: true,
+        });
+    },
     describeProvider() {
         return "Local NIM";
     },

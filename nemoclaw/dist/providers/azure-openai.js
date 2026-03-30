@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: Apache-2.0
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.azureOpenAIProvider = void 0;
+const interface_js_1 = require("./interface.js");
 const validate_js_1 = require("../onboard/validate.js");
 const prompt_js_1 = require("../onboard/prompt.js");
 exports.azureOpenAIProvider = {
@@ -84,6 +85,11 @@ exports.azureOpenAIProvider = {
             credential_env: credentialEnv,
             dynamic_endpoint: true,
         };
+    },
+    toOpenShellProviderConfig(apiKey, endpointUrl) {
+        return (0, interface_js_1.createOpenShellProviderConfig)("openai", this.credentialEnvVar, this.credentialEnvVar, endpointUrl, {
+            useEnvRef: true,
+        });
     },
     describeProvider() {
         return "Azure OpenAI";

@@ -22,7 +22,7 @@ description: |
 
 components:
   sandbox:
-    image: "codiceraimages.azurecr.io/nemoclaw:v2.1.0"
+    image: "codiceraimages.azurecr.io/nemoclaw:latest"
     name: "nemoclaw"
     forward_ports:
       - 18800

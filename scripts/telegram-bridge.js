@@ -13,41 +13,66 @@
  *   TELEGRAM_BOT_TOKEN  — from @BotFather
  *   NVIDIA_API_KEY      — for inference
  *   SANDBOX_NAME        — sandbox name (default: nemoclaw)
- *   ALLOWED_CHAT_IDS    — comma-separated Telegram chat IDs to accept (optional, accepts all if unset)
+ *   ALLOWED_CHAT_IDS    — required comma-separated Telegram chat IDs to accept
  */
 
 const https = require("https");
 const { execSync, spawn } = require("child_process");
+const fs = require("fs");
 const { resolveOpenshell } = require("../bin/lib/resolve-openshell");
 
-const OPENSHELL = resolveOpenshell();
-if (!OPENSHELL) {
-  console.error("openshell not found on PATH or in common locations");
-  process.exit(1);
+function parseAllowedChats(raw) {
+  if (!raw || !raw.trim()) {
+    throw new Error("ALLOWED_CHAT_IDS is required and must list one or more Telegram chat IDs.");
+  }
+
+  const entries = raw.split(",");
+  const chatIds = [];
+  for (const entry of entries) {
+    const value = entry.trim();
+    if (!value || value === "*") {
+      throw new Error("ALLOWED_CHAT_IDS must contain exact numeric chat IDs only.");
+    }
+    if (!/^-?\d+$/.test(value)) {
+      throw new Error(`Invalid Telegram chat ID: ${value}`);
+    }
+    chatIds.push(value);
+  }
+
+  return new Set(chatIds);
 }
 
-const TOKEN = process.env.TELEGRAM_BOT_TOKEN;
-const API_KEY = process.env.NVIDIA_API_KEY;
-const SANDBOX = process.env.SANDBOX_NAME || "nemoclaw";
-const ALLOWED_CHATS = process.env.ALLOWED_CHAT_IDS
-  ? process.env.ALLOWED_CHAT_IDS.split(",").map((s) => s.trim())
-  : null;
+function loadConfig(env = process.env) {
+  const openshell = resolveOpenshell();
+  if (!openshell) {
+    throw new Error("openshell not found on PATH or in common locations");
+  }
 
-if (!TOKEN) { console.error("TELEGRAM_BOT_TOKEN required"); process.exit(1); }
-if (!API_KEY) { console.error("NVIDIA_API_KEY required"); process.exit(1); }
+  const token = env.TELEGRAM_BOT_TOKEN;
+  const apiKey = env.NVIDIA_API_KEY;
+  if (!token) throw new Error("TELEGRAM_BOT_TOKEN required");
+  if (!apiKey) throw new Error("NVIDIA_API_KEY required");
+
+  return {
+    openshell,
+    token,
+    apiKey,
+    sandbox: env.SANDBOX_NAME || "nemoclaw",
+    allowedChats: parseAllowedChats(env.ALLOWED_CHAT_IDS),
+  };
+}
 
 let offset = 0;
-const activeSessions = new Map(); // chatId → message history
 
 // ── Telegram API helpers ──────────────────────────────────────────
 
-function tgApi(method, body) {
+function tgApi(config, method, body) {
   return new Promise((resolve, reject) => {
     const data = JSON.stringify(body);
     const req = https.request(
       {
         hostname: "api.telegram.org",
-        path: `/bot${TOKEN}/${method}`,
+        path: `/bot${config.token}/${method}`,
         method: "POST",
         headers: { "Content-Type": "application/json", "Content-Length": Buffer.byteLength(data) },
       },
@@ -65,43 +90,43 @@ function tgApi(method, body) {
   });
 }
 
-async function sendMessage(chatId, text, replyTo) {
+async function sendMessage(config, chatId, text, replyTo) {
   // Telegram max message length is 4096
   const chunks = [];
   for (let i = 0; i < text.length; i += 4000) {
     chunks.push(text.slice(i, i + 4000));
   }
   for (const chunk of chunks) {
-    await tgApi("sendMessage", {
+    await tgApi(config, "sendMessage", {
       chat_id: chatId,
       text: chunk,
       reply_to_message_id: replyTo,
       parse_mode: "Markdown",
     }).catch(() =>
       // Retry without markdown if it fails (unbalanced formatting)
-      tgApi("sendMessage", { chat_id: chatId, text: chunk, reply_to_message_id: replyTo }),
+      tgApi(config, "sendMessage", { chat_id: chatId, text: chunk, reply_to_message_id: replyTo }),
     );
   }
 }
 
-async function sendTyping(chatId) {
-  await tgApi("sendChatAction", { chat_id: chatId, action: "typing" }).catch(() => {});
+async function sendTyping(config, chatId) {
+  await tgApi(config, "sendChatAction", { chat_id: chatId, action: "typing" }).catch(() => {});
 }
 
 // ── Run agent inside sandbox ──────────────────────────────────────
 
-function runAgentInSandbox(message, sessionId) {
+function runAgentInSandbox(config, message, sessionId) {
   return new Promise((resolve) => {
-    const sshConfig = execSync(`"${OPENSHELL}" sandbox ssh-config "${SANDBOX}"`, { encoding: "utf-8" });
+    const sshConfig = execSync(`"${config.openshell}" sandbox ssh-config "${config.sandbox}"`, { encoding: "utf-8" });
 
     // Write temp ssh config
     const confPath = `/tmp/nemoclaw-tg-ssh-${sessionId}.conf`;
-    require("fs").writeFileSync(confPath, sshConfig);
+    fs.writeFileSync(confPath, sshConfig);
 
     const escaped = message.replace(/'/g, "'\\''");
-    const cmd = `export NVIDIA_API_KEY='${API_KEY}' && nemoclaw-start openclaw agent --agent main --local -m '${escaped}' --session-id 'tg-${sessionId}'`;
+    const cmd = `export NVIDIA_API_KEY='${config.apiKey}' && nemoclaw-start openclaw agent --agent main --local -m '${escaped}' --session-id 'tg-${sessionId}'`;
 
-    const proc = spawn("ssh", ["-T", "-F", confPath, `openshell-${SANDBOX}`, cmd], {
+    const proc = spawn("ssh", ["-T", "-F", confPath, `openshell-${config.sandbox}`, cmd], {
       timeout: 120000,
       stdio: ["ignore", "pipe", "pipe"],
     });
@@ -113,7 +138,7 @@ function runAgentInSandbox(message, sessionId) {
     proc.stderr.on("data", (d) => (stderr += d.toString()));
 
     proc.on("close", (code) => {
-      try { require("fs").unlinkSync(confPath); } catch {}
+      try { fs.unlinkSync(confPath); } catch {}
 
       // Extract the actual agent response — skip setup lines
       const lines = stdout.split("\n");
@@ -150,9 +175,9 @@ function runAgentInSandbox(message, sessionId) {
 
 // ── Poll loop ─────────────────────────────────────────────────────
 
-async function poll() {
+async function poll(config) {
   try {
-    const res = await tgApi("getUpdates", { offset, timeout: 30 });
+    const res = await tgApi(config, "getUpdates", { offset, timeout: 30 });
 
     if (res.ok && res.result?.length > 0) {
       for (const update of res.result) {
@@ -164,7 +189,7 @@ async function poll() {
         const chatId = String(msg.chat.id);
 
         // Access control
-        if (ALLOWED_CHATS && !ALLOWED_CHATS.includes(chatId)) {
+        if (!config.allowedChats.has(chatId)) {
           console.log(`[ignored] chat ${chatId} not in allowed list`);
           continue;
         }
@@ -175,6 +200,7 @@ async function poll() {
         // Handle /start
         if (msg.text === "/start") {
           await sendMessage(
+            config,
             chatId,
             "🦀 *NemoClaw* — powered by Nemotron 3 Super 120B\n\n" +
               "Send me a message and I'll run it through the OpenClaw agent " +
@@ -187,25 +213,24 @@ async function poll() {
 
         // Handle /reset
         if (msg.text === "/reset") {
-          activeSessions.delete(chatId);
-          await sendMessage(chatId, "Session reset.", msg.message_id);
+          await sendMessage(config, chatId, "Session reset.", msg.message_id);
           continue;
         }
 
         // Send typing indicator
-        await sendTyping(chatId);
+        await sendTyping(config, chatId);
 
         // Keep a typing indicator going while agent runs
-        const typingInterval = setInterval(() => sendTyping(chatId), 4000);
+        const typingInterval = setInterval(() => sendTyping(config, chatId), 4000);
 
         try {
-          const response = await runAgentInSandbox(msg.text, chatId);
+          const response = await runAgentInSandbox(config, msg.text, chatId);
           clearInterval(typingInterval);
           console.log(`[${chatId}] agent: ${response.slice(0, 100)}...`);
-          await sendMessage(chatId, response, msg.message_id);
+          await sendMessage(config, chatId, response, msg.message_id);
         } catch (err) {
           clearInterval(typingInterval);
-          await sendMessage(chatId, `Error: ${err.message}`, msg.message_id);
+          await sendMessage(config, chatId, `Error: ${err.message}`, msg.message_id);
         }
       }
     }
@@ -214,13 +239,16 @@ async function poll() {
   }
 
   // Continue polling
-  setTimeout(poll, 100);
+  setTimeout(() => poll(config), 100);
 }
 
 // ── Main ──────────────────────────────────────────────────────────
 
 async function main() {
-  const me = await tgApi("getMe", {});
+  const config = loadConfig();
+  console.log(`[telegram] allowlisted chat IDs: ${config.allowedChats.size}`);
+
+  const me = await tgApi(config, "getMe", {});
   if (!me.ok) {
     console.error("Failed to connect to Telegram:", JSON.stringify(me));
     process.exit(1);
@@ -231,7 +259,7 @@ async function main() {
   console.log("  │  NemoClaw Telegram Bridge                          │");
   console.log("  │                                                     │");
   console.log(`  │  Bot:      @${(me.result.username + "                    ").slice(0, 37)}│`);
-  console.log("  │  Sandbox:  " + (SANDBOX + "                              ").slice(0, 40) + "│");
+  console.log("  │  Sandbox:  " + (config.sandbox + "                              ").slice(0, 40) + "│");
   console.log("  │  Model:    nvidia/nemotron-3-super-120b-a12b       │");
   console.log("  │                                                     │");
   console.log("  │  Messages are forwarded to the OpenClaw agent      │");
@@ -240,7 +268,17 @@ async function main() {
   console.log("  └─────────────────────────────────────────────────────┘");
   console.log("");
 
-  poll();
+  poll(config);
 }
 
-main();
+if (require.main === module) {
+  main().catch((err) => {
+    console.error(err instanceof Error ? err.message : String(err));
+    process.exit(1);
+  });
+}
+
+module.exports = {
+  loadConfig,
+  parseAllowedChats,
+};

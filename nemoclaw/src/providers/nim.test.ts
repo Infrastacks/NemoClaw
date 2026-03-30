@@ -363,7 +363,7 @@ describe("toOpenShellProviderConfig", () => {
       "https://integrate.api.nvidia.com/v1",
     );
     expect(config.type).toBe("openai");
-    expect(config.credentials).toEqual({ NGC_API_KEY: "ngc-test-key" });
+    expect(config.credentialEnvRefs).toEqual({ NGC_API_KEY: "NGC_API_KEY" });
     expect(config.config).toEqual({
       OPENAI_BASE_URL: "https://integrate.api.nvidia.com/v1",
     });

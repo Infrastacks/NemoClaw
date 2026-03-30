@@ -17,6 +17,7 @@ const {
 const registry = require("./lib/registry");
 const nim = require("./lib/nim");
 const policies = require("./lib/policies");
+const OPEN_SHELL_REPO = process.env.NEMOCLAW_OPEN_SHELL_REPO || "Infrastacks/OpenShell";
 
 // ── Global commands ──────────────────────────────────────────────
 
@@ -68,7 +69,7 @@ async function deploy(instanceName) {
     process.exit(1);
   }
   await ensureApiKey();
-  if (isRepoPrivate("NVIDIA/OpenShell")) {
+  if (isRepoPrivate(OPEN_SHELL_REPO)) {
     await ensureGithubToken();
   }
   const name = instanceName;

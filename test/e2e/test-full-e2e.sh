@@ -193,7 +193,7 @@ if echo "$inf_check" | grep -qi "nvidia-nim"; then
 else
   info "Inference not configured by onboard — setting it directly..."
   openshell provider create --name nvidia-nim --type openai \
-    --credential "NVIDIA_API_KEY=$NVIDIA_API_KEY" \
+    --credential-env "NVIDIA_API_KEY=NVIDIA_API_KEY" \
     --config "OPENAI_BASE_URL=https://integrate.api.nvidia.com/v1" 2>&1 || true
   openshell inference set --provider nvidia-nim --model nvidia/nemotron-3-super-120b-a12b 2>&1
   inf_verify=$(openshell inference get 2>&1)
