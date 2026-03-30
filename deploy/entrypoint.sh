@@ -28,6 +28,11 @@ export HOSTNAME="${SANDBOX_ID:-nemoclaw}"
 # Copy base policy as starting point
 cp /opt/openshell/nemoclaw-policy.yaml /sandbox/.nemoclaw/sandbox-policy.yaml
 
+# Copy supply chain baseline (overridden by CODICERA_POLICIES if supply_chain policy attached)
+if [ -f /opt/openshell/supply-chain-baseline.yaml ]; then
+  cp /opt/openshell/supply-chain-baseline.yaml /sandbox/.nemoclaw/supply-chain-policy.yaml
+fi
+
 if [ -n "${CODICERA_POLICIES:-}" ]; then
   echo "Assembling policies from CODICERA_POLICIES..."
   echo "$CODICERA_POLICIES" | base64 -d | python3 -c "
