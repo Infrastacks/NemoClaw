@@ -36,6 +36,7 @@ RUN chmod +x /usr/local/bin/openshell
 RUN mkdir -p /opt/openshell /etc/openshell-tls
 COPY deploy/rego/sandbox-policy.rego /opt/openshell/sandbox-policy.rego
 COPY nemoclaw-blueprint/policies/openclaw-sandbox.yaml /opt/openshell/nemoclaw-policy.yaml
+COPY nemoclaw-blueprint/policies/supply-chain-baseline.yaml /opt/openshell/supply-chain-baseline.yaml
 
 # OpenShell restart helper (called by agent for policy hot-reload)
 COPY deploy/restart-openshell.sh /usr/local/bin/restart-openshell.sh

@@ -1,0 +1,29 @@
+# Sane-default supply chain policy for OpenShell.
+# Baked into the image as a baseline; overridden at runtime by
+# CODICERA_POLICIES if a supply_chain policy is attached to the sandbox.
+#
+# Enforcement: audit (log violations but don't block installs).
+# Allows common permissive licenses, denies strong copyleft.
+# Blocks critical vulnerabilities with no known fix.
+
+version: 1
+
+supply_chain:
+  enforcement: audit
+  vulnerability_thresholds:
+    max_critical: 0
+    max_high: 5
+    block_unfixed_critical: true
+  license_policy:
+    allowed:
+      - MIT
+      - Apache-2.0
+      - BSD-2-Clause
+      - BSD-3-Clause
+      - ISC
+      - 0BSD
+      - MPL-2.0
+    denied:
+      - "GPL-3.0*"
+      - "AGPL-*"
+  osv_cache_ttl_hours: 4
