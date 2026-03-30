@@ -251,13 +251,13 @@ network_policies:
         enforcement: enforce
         tls: terminate
         rules:
-          - allow: { method: GET, path: "/res/v1/web/search" }
+          - allow: { method: GET, path: "/res/v1/web/search**" }
       - host: api.bing.microsoft.com
         port: 443
         protocol: rest
         enforcement: enforce
         tls: terminate
         rules:
-          - allow: { method: GET, path: "/v7.0/search" }
+          - allow: { method: GET, path: "/v7.0/search**" }
     binaries:
       - { path: "/usr/local/bin/python*" }
