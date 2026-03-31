@@ -1,4 +1,3 @@
-import { execFile } from "node:child_process";
 import { writeFile, readFile, rename } from "node:fs/promises";
 import { dirname } from "node:path";
 import { mkdirSync } from "node:fs";
@@ -123,7 +122,7 @@ export class CommandHandler {
                 return;
             }
         }
-        await this.handleStart(blueprintId, credentials);
+        await this.handleStart(blueprintId);
     }
     async handleUpdateBlueprint(blueprintId) {
         const { currentRunId, currentStatus } = this.state.get();
@@ -258,17 +257,6 @@ export class CommandHandler {
         // Write YAML for OpenShell (atomic)
         await writeFile(yamlPath + ".tmp", jsonToYaml(policy), "utf-8");
         await rename(yamlPath + ".tmp", yamlPath);
-    }
-    /** Restart the OpenShell CONNECT proxy to pick up policy changes. */
-    restartOpenShell() {
-        return new Promise((resolve, reject) => {
-            execFile("/usr/local/bin/restart-openshell.sh", [], { timeout: 30_000 }, (err, _stdout, stderr) => {
-                if (err)
-                    reject(new Error(`OpenShell restart failed: ${stderr || err.message}`));
-                else
-                    resolve();
-            });
-        });
     }
     sendStatus(from, to) {
         this.connection.send({
