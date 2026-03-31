@@ -5,8 +5,16 @@
 # Pre-built Node.js telemetry agent (from codicera/agent, compiled on host)
 # To rebuild: cd codicera/agent && npx tsc && copy dist/*.js + node_modules/ws to deploy/prebuilt-agent/
 #
-# Pre-built OpenShell sandbox binary (Rust, cross-compiled for x86_64-unknown-linux-musl)
-# To rebuild: see OpenShell repo, cargo build --release -p openshell-sandbox --target x86_64-unknown-linux-musl
+# OpenShell is built in ACR from the staged InfraStacks fork source under .build/openshell-src.
+
+FROM rust:1.88-slim AS openshell-builder
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    musl-tools cmake g++ make protobuf-compiler pkg-config \
+    && rm -rf /var/lib/apt/lists/*
+RUN rustup target add x86_64-unknown-linux-musl
+WORKDIR /build/openshell
+COPY .build/openshell-src/ ./
+RUN cargo build --release -p openshell-cli --target x86_64-unknown-linux-musl
 
 FROM python:3.12-alpine AS runtime
 RUN apk add --no-cache curl git ca-certificates nodejs
@@ -26,10 +34,10 @@ COPY deploy/prebuilt/ncp-transform-proxy /usr/local/bin/ncp-transform-proxy
 COPY deploy/prebuilt/azure-transform-proxy /usr/local/bin/azure-transform-proxy
 RUN chmod +x /usr/local/bin/ncp-transform-proxy /usr/local/bin/azure-transform-proxy
 
-# Pre-built OpenShell sandbox binary (CONNECT proxy + L7 inspection)
+# OpenShell binary built from the staged InfraStacks fork source.
 # Replaces the standalone pii-policy-proxy — PII detection now happens
 # in the L7 pipeline alongside supply chain scanning.
-COPY deploy/prebuilt/openshell /usr/local/bin/openshell
+COPY --from=openshell-builder /build/openshell/target/x86_64-unknown-linux-musl/release/openshell /usr/local/bin/openshell
 RUN chmod +x /usr/local/bin/openshell
 
 # OPA Rego rules + base policy YAML for OpenShell

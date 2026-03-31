@@ -11,5 +11,6 @@ htmlcov/
 
 # Commercial artifacts — built locally, never committed to OSS repo
 car/
+.build/
 deploy/prebuilt/
 deploy/prebuilt-agent/
