@@ -29,7 +29,7 @@ fi
 # ── Start fresh proxy instance ───────────────────────────────────
 echo "[restart-openshell] Starting OpenShell CONNECT proxy..." | tee -a "$LOG_FILE"
 
-OPENSHELL_NO_NETNS=1 /usr/local/bin/openshell \
+OPENSHELL_NO_NETNS=1 /usr/local/bin/openshell-sandbox \
   --policy-rules /opt/openshell/sandbox-policy.rego \
   --policy-data /sandbox/.nemoclaw/sandbox-policy.yaml \
   --health-check \
