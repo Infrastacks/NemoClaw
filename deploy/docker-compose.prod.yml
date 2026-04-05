@@ -1,6 +1,6 @@
 services:
   nemoclaw-agent:
-    image: codiceraimages.azurecr.io/nemoclaw:${NEMOCLAW_VERSION:-latest}
+    image: ghcr.io/infrastacks/nemoclaw:${NEMOCLAW_VERSION:-latest}
     ports:
       - "${HOST_PORT_API:-18800}:18800"
     environment:
