@@ -1,7 +1,7 @@
 replicaCount: 1
 
 image:
-  repository: codiceraimages.azurecr.io/nemoclaw
+  repository: ghcr.io/infrastacks/nemoclaw
   pullPolicy: Always
   tag: "latest"
 

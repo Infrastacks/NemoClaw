@@ -24,8 +24,8 @@ spec:
       serviceAccountName: nemoclaw-agent
       containers:
         - name: nemoclaw
-          # REPLACE: image if you are not using the InfraStacks ACR default
-          image: codiceraimages.azurecr.io/nemoclaw:latest
+          # REPLACE: image if you are not using the InfraStacks GHCR default
+          image: ghcr.io/infrastacks/nemoclaw:latest
           imagePullPolicy: Always
           ports:
             - name: api
